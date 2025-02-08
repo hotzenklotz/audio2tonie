@@ -1,0 +1,9 @@
+# Rust
+/target
+
+# MacOS
+.DS_Store
+
+# Auto-generated
+src/tonie_header/mod.rs
+src/tonie_header/tonie_header.rs
