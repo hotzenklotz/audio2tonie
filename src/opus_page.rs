@@ -1,24 +1,28 @@
-use std::io::{Read, Seek, SeekFrom};
-use std::convert::TryInto;
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use sha1::Sha1;
+use crate::converter::ReadSeekSend;
 use crate::opus_packet::OpusPacket;
 use crate::utils::crc32;
 
+use anyhow::{anyhow, Result};
+use byteorder::{LittleEndian, ReadBytesExt};
+use sha1::digest::Update;
+use sha1::Sha1;
+use std::io::{Read, Seek, SeekFrom};
+
 // Constants
-const ONLY_CONVERT_FRAMEPACKING: i32 = -1;
-const OTHER_PACKET_NEEDED: i32 = -2;
-const DO_NOTHING: i32 = -3;
-const TOO_MANY_SEGMENTS: i32 = -4;
+pub const ONLY_CONVERT_FRAMEPACKING: i32 = -1;
+pub const OTHER_PACKET_NEEDED: i32 = -2;
+pub const DO_NOTHING: i32 = -3;
+pub const TOO_MANY_SEGMENTS: i32 = -4;
 
 // Main struct definition
+#[derive(Clone)]
 pub struct OpusPage {
     pub version: u8,
-    pub page_type: Option<u8>,
-    pub granule_position: i64,
+    pub page_type: u8,
+    pub granule_position: u64,
     pub serial_no: u32,
     pub page_no: u32,
-    pub checksum: Option<u32>,
+    pub checksum: u32,
     pub segment_count: u8,
     pub segments: Vec<OpusPacket>,
 }
@@ -27,42 +31,42 @@ impl OpusPage {
     pub fn new() -> Self {
         OpusPage {
             version: 0,
-            page_type: None,
+            page_type: 0,
             granule_position: 0,
             serial_no: 0,
             page_no: 0,
-            checksum: None,
+            checksum: 0,
             segment_count: 0,
             segments: Vec::new(),
         }
     }
 
-    pub fn from_reader<R: Read>(reader: &mut R) -> std::io::Result<Self> {
+    pub fn from_reader<R: Read + Seek>(reader: &mut R) -> Result<Self> {
         let mut page = OpusPage::new();
         page.parse_header(reader)?;
         page.parse_segments(reader)?;
         Ok(page)
     }
 
-    fn parse_header<R: Read>(&mut self, reader: &mut R) -> std::io::Result<()> {
+    fn parse_header<R: Read>(&mut self, reader: &mut R) -> Result<()> {
         let mut header = vec![0u8; 27];
         reader.read_exact(&mut header)?;
 
         // Skip first 4 bytes as they're the "OggS" magic number
         let mut cursor = std::io::Cursor::new(&header[4..]);
-        
+
         self.version = cursor.read_u8()?;
-        self.page_type = Some(cursor.read_u8()?);
-        self.granule_position = cursor.read_i64::<LittleEndian>()?;
+        self.page_type = cursor.read_u8()?;
+        self.granule_position = cursor.read_u64::<LittleEndian>()?;
         self.serial_no = cursor.read_u32::<LittleEndian>()?;
         self.page_no = cursor.read_u32::<LittleEndian>()?;
-        self.checksum = Some(cursor.read_u32::<LittleEndian>()?);
+        self.checksum = cursor.read_u32::<LittleEndian>()?;
         self.segment_count = cursor.read_u8()?;
 
         Ok(())
     }
 
-    fn parse_segments<R: Read>(&mut self, reader: &mut R) -> std::io::Result<()> {
+    fn parse_segments<R: Read + Seek>(&mut self, reader: &mut R) -> Result<()> {
         let mut table = vec![0u8; self.segment_count as usize];
         reader.read_exact(&mut table)?;
 
@@ -71,19 +75,14 @@ impl OpusPage {
 
         self.segments.clear();
         for &length in table.iter() {
-            let segment = OpusPacket::from_reader(
-                reader,
-                length as i32,
-                last_length,
-                dont_parse_info,
-            )?;
+            let segment =
+                OpusPacket::new(Some(reader), length as i32, last_length, dont_parse_info)?;
             last_length = length as i32;
             self.segments.push(segment);
         }
 
         if self.segments.last().map_or(false, |s| s.spanning_packet) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            return Err(anyhow!(
                 "Found an opus packet spanning ogg pages. This is not supported yet."
             ));
         }
@@ -91,15 +90,15 @@ impl OpusPage {
         Ok(())
     }
 
-    pub fn correct_values(&mut self, last_granule: i64) -> std::io::Result<()> {
+    pub fn correct_values(&mut self, last_granule: u64) -> Result<()> {
         if self.segments.len() > 255 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Too many segments: {} - max 255 allowed", self.segments.len())
+            return Err(anyhow!(
+                "Too many segments: {} - max 255 allowed",
+                self.segments.len()
             ));
         }
 
-        let mut granule = 0;
+        let mut granule: u64 = 0;
         if self.page_no != 0 && self.page_no != 1 {
             for segment in &self.segments {
                 if segment.first_packet {
@@ -110,18 +109,18 @@ impl OpusPage {
 
         self.granule_position = last_granule + granule;
         self.segment_count = self.segments.len() as u8;
-        self.checksum = Some(self.calc_checksum());
+        self.checksum = self.calc_checksum();
 
         Ok(())
     }
 
-    fn calc_checksum(&self) -> u32 {
+    pub fn calc_checksum(&self) -> u32 {
         let mut data = Vec::new();
         data.extend_from_slice(b"OggS");
-        
+
         // Pack header data
         data.push(self.version);
-        data.push(self.page_type.unwrap_or(0));
+        data.push(self.page_type);
         data.extend_from_slice(&self.granule_position.to_le_bytes());
         data.extend_from_slice(&self.serial_no.to_le_bytes());
         data.extend_from_slice(&self.page_no.to_le_bytes());
@@ -146,7 +145,7 @@ impl OpusPage {
         for segment in &self.segments {
             size += segment.data.len();
         }
-        size
+        return size;
     }
 
     pub fn get_size_of_first_opus_packet(&self) -> usize {
@@ -188,13 +187,22 @@ impl OpusPage {
         index_after: usize,
         spanning_packet: bool,
         first_packet: bool,
-    ) {
-        let mut segment = OpusPacket::new();
+    ) -> Result<()> {
+        let mut segment = OpusPacket::new::<std::io::Empty>(None, 0, 0, false)?;
         segment.first_packet = first_packet;
         segment.spanning_packet = spanning_packet;
         segment.size = 0;
         segment.data = Vec::new();
-        self.segments.insert(index_after + 1, segment);
+
+        let segment_index  =index_after + 1;
+
+        if segment_index >= self.segments.len() {
+            self.segments.push(segment);
+        } else {
+            self.segments.insert(index_after + 1, segment);
+        };
+
+        Ok(())
     }
 
     pub fn get_opus_packet_size(&self, seg_start: usize) -> usize {
@@ -206,7 +214,7 @@ impl OpusPage {
             current += 1;
         }
 
-        size
+        return size;
     }
 
     pub fn get_segment_count_of_packet_at(&self, seg_start: usize) -> usize {
@@ -214,10 +222,10 @@ impl OpusPage {
         while seg_end < self.segments.len() && !self.segments[seg_end].first_packet {
             seg_end += 1;
         }
-        seg_end - seg_start
+        return seg_end - seg_start;
     }
 
-    pub fn redistribute_packet_data_at(&mut self, seg_start: usize, pad_count: usize) {
+    pub fn redistribute_packet_data_at(&mut self, seg_start: usize, pad_count: usize) -> Result<()> {
         let seg_count = self.get_segment_count_of_packet_at(seg_start);
         let mut full_data = Vec::new();
 
@@ -231,7 +239,7 @@ impl OpusPage {
         if size < 255 {
             self.segments[seg_start].size = size as i32;
             self.segments[seg_start].data = full_data;
-            return;
+            return Ok(());
         }
 
         let needed_seg_count = if size % 255 == 0 {
@@ -246,19 +254,22 @@ impl OpusPage {
                 seg_start + seg_count + i,
                 i != (segments_to_create - 1),
                 false,
-            );
+            )?;
         }
 
         // Redistribute data
         for i in 0..needed_seg_count {
             let chunk_size = std::cmp::min(255, full_data.len());
             let chunk = full_data[..chunk_size].to_vec();
+            let chunk_len = chunk.len();
+
             self.segments[seg_start + i].data = chunk;
-            self.segments[seg_start + i].size = chunk.len() as i32;
+            self.segments[seg_start + i].size = chunk_len as i32;
             full_data = full_data[chunk_size..].to_vec();
         }
-        
+
         assert!(full_data.is_empty());
+        return Ok(());
     }
 
     pub fn convert_packet_to_framepacking_three_and_pad(
@@ -266,39 +277,43 @@ impl OpusPage {
         seg_start: usize,
         pad: bool,
         count: usize,
-    ) {
+    ) -> Result<()>{
         assert!(self.segments[seg_start].first_packet);
         self.segments[seg_start].convert_to_framepacking_three();
         if pad {
-            self.segments[seg_start].set_pad_count(count);
+            self.segments[seg_start].set_pad_count(count as u32)?;
         }
-        self.redistribute_packet_data_at(seg_start, count);
+        self.redistribute_packet_data_at(seg_start, count)?;
+        
+        return Ok(());
     }
 
-    pub fn calc_actual_padding_value(&self, seg_start: usize, bytes_needed: i32) -> i32 {
-        assert!(bytes_needed >= 0, "Page is already too large! Something went wrong.");
+    pub fn calc_actual_padding_value(&self, seg_start: usize, bytes_needed: i32) -> Result<i32> {
+        if bytes_needed < 0 {
+            return Err(anyhow!("Page is already too large! Something went wrong."));
+        }
 
         let seg_end = seg_start + self.get_segment_count_of_packet_at(seg_start);
         let size_of_last_segment = self.segments[seg_end - 1].size;
-        let convert_framepacking_needed = self.segments[seg_start].framepacking != Some(3);
+        let convert_framepacking_needed = self.segments[seg_start].framepacking != 3;
 
         if bytes_needed == 0 {
-            return DO_NOTHING;
+            return Ok(DO_NOTHING);
         }
 
         if (bytes_needed + size_of_last_segment) % 255 == 0 {
-            return OTHER_PACKET_NEEDED;
+            return Ok(OTHER_PACKET_NEEDED);
         }
 
         if bytes_needed == 1 {
             return if convert_framepacking_needed {
-                ONLY_CONVERT_FRAMEPACKING
+                Ok(ONLY_CONVERT_FRAMEPACKING)
             } else {
-                0
+                Ok(0)
             };
         }
 
-        let mut new_segments_needed = 0;
+        let mut new_segments_needed:i32 = 0;
         if bytes_needed + size_of_last_segment >= 255 {
             let mut tmp_count = bytes_needed + size_of_last_segment - 255;
             while tmp_count >= 0 {
@@ -307,21 +322,21 @@ impl OpusPage {
             }
         }
 
-        if new_segments_needed + self.segments.len() > 255 {
-            return TOO_MANY_SEGMENTS;
+        if new_segments_needed + self.segments.len() as i32 > 255 {
+            return Ok(TOO_MANY_SEGMENTS);
         }
 
-        if (bytes_needed + size_of_last_segment) % 255 == (new_segments_needed - 1) {
-            return OTHER_PACKET_NEEDED;
+        if (bytes_needed + size_of_last_segment) % 255 == new_segments_needed  - 1  {
+            return Ok(OTHER_PACKET_NEEDED);
         }
 
         let mut packet_bytes_needed = bytes_needed - new_segments_needed;
 
         if packet_bytes_needed == 1 {
             return if convert_framepacking_needed {
-                ONLY_CONVERT_FRAMEPACKING
+                Ok(ONLY_CONVERT_FRAMEPACKING)
             } else {
-                0
+                Ok(0)
             };
         }
 
@@ -330,94 +345,93 @@ impl OpusPage {
         }
         packet_bytes_needed -= 1; // padding_count_data is at least 1 byte
 
-        let size_of_padding_count_data = std::cmp::max(
-            1,
-            ((packet_bytes_needed as f64) / 254.0).ceil() as i32
-        );
-        let check_size = ((packet_bytes_needed - size_of_padding_count_data + 1) as f64 / 254.0)
-            .ceil() as i32;
+        let size_of_padding_count_data =
+            std::cmp::max(1, ((packet_bytes_needed as f64) / 254.0).ceil() as i32);
+        let check_size =
+            ((packet_bytes_needed - size_of_padding_count_data + 1) as f64 / 254.0).ceil() as i32;
 
         if check_size != size_of_padding_count_data {
-            OTHER_PACKET_NEEDED
+            return Ok(OTHER_PACKET_NEEDED);
         } else {
-            packet_bytes_needed - size_of_padding_count_data + 1
+            return Ok(packet_bytes_needed - size_of_padding_count_data + 1);
         }
     }
 
-    pub fn pad(&mut self, pad_to: usize, idx_offset: Option<usize>) {
+    pub fn pad(&mut self, pad_to: usize, idx_offset: Option<usize>) -> Result<()>{
         let mut idx = idx_offset.unwrap_or_else(|| self.segments.len() - 1);
 
         while !self.segments[idx].first_packet {
-            idx = idx.checked_sub(1).expect("Could not find begin of last packet!");
+            idx = idx
+                .checked_sub(1)
+                .expect("Could not find begin of last packet!");
         }
 
         let pad_count = pad_to as i32 - self.get_page_size() as i32;
         let actual_padding = self.calc_actual_padding_value(idx, pad_count);
 
         match actual_padding {
-            DO_NOTHING => return,
-            ONLY_CONVERT_FRAMEPACKING => {
-                self.convert_packet_to_framepacking_three_and_pad(idx, false, 0);
-                return;
+            Ok(DO_NOTHING) => return Ok(()),
+            Ok(ONLY_CONVERT_FRAMEPACKING) => {
+                self.convert_packet_to_framepacking_three_and_pad(idx, false, 0)?;
+                return Ok(());
             }
-            OTHER_PACKET_NEEDED => {
-                self.pad_one_byte();
-                self.pad(pad_to, None);
-                return;
+            Ok(OTHER_PACKET_NEEDED) => {
+                self.pad_one_byte()?;
+                self.pad(pad_to, None)?;
+                return Ok(());
             }
-            TOO_MANY_SEGMENTS => {
-                self.pad(pad_to - (pad_count as usize / 2), Some(idx - 1));
-                self.pad(pad_to, None);
-                return;
+            Ok(TOO_MANY_SEGMENTS) => {
+                self.pad(pad_to - (pad_count as usize / 2), Some(idx - 1))?;
+                self.pad(pad_to, None)?;
+                return Ok(());
             }
             _ => {
-                self.convert_packet_to_framepacking_three_and_pad(idx, true, actual_padding as usize);
+                self.convert_packet_to_framepacking_three_and_pad(
+                    idx,
+                    true,
+                    actual_padding? as usize,
+                )?;
                 assert_eq!(self.get_page_size(), pad_to);
+                return Ok(());
             }
         }
     }
 
-    pub fn pad_one_byte(&mut self) -> std::io::Result<()> {
+    pub fn pad_one_byte(&mut self) -> Result<()> {
         let mut i = 0;
         while i < self.segments.len() {
-            if self.segments[i].first_packet 
-                && !self.segments[i].padding
-                && self.get_opus_packet_size(i) % 255 < 254 {
+            if self.segments[i].first_packet
+                && self.segments[i].padding.unwrap_or(0) == 0
+                && self.get_opus_packet_size(i) % 255 < 254
+            {
                 break;
             }
             i += 1;
             if i >= self.segments.len() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Page seems impossible to pad correctly"
-                ));
+                return Err(anyhow!("Page seems impossible to pad correctly",));
             }
         }
 
-        if self.segments[i].framepacking == Some(3) {
-            self.convert_packet_to_framepacking_three_and_pad(i, true, 0);
+        if self.segments[i].framepacking == 3 {
+            self.convert_packet_to_framepacking_three_and_pad(i, true, 0)?;
         } else {
-            self.convert_packet_to_framepacking_three_and_pad(i, false, 0);
+            self.convert_packet_to_framepacking_three_and_pad(i, false, 0)?;
         }
 
         Ok(())
     }
 
-    pub fn write_page<W: std::io::Write>(
-        &self,
-        writer: &mut W,
-        sha1: Option<&mut Sha1>,
-    ) -> std::io::Result<()> {
+    pub fn write_page<W: std::io::Write>(&self, writer: &mut W, sha1: &mut Sha1) -> Result<()> {
         let mut data = Vec::new();
         data.extend_from_slice(b"OggS");
-        
+
         // Write header
         data.push(self.version);
-        data.push(self.page_type.unwrap_or(0));
+        data.push(self.page_type);
         data.extend_from_slice(&self.granule_position.to_le_bytes());
         data.extend_from_slice(&self.serial_no.to_le_bytes());
         data.extend_from_slice(&self.page_no.to_le_bytes());
-        data.extend_from_slice(&self.checksum.unwrap_or(0).to_le_bytes());
+        data.extend_from_slice(&self.checksum.to_le_bytes());
         data.push(self.segment_count);
 
         // Write segment table
@@ -425,16 +439,12 @@ impl OpusPage {
             data.push(segment.size as u8);
         }
 
-        if let Some(sha1) = sha1 {
-            sha1.update(&data);
-        }
+        Update::update(sha1, &data);
         writer.write_all(&data)?;
 
         // Write segment data
         for segment in &self.segments {
-            if let Some(sha1) = sha1 {
-                sha1.update(&segment.data);
-            }
+            Update::update(sha1, &data);
             writer.write_all(&segment.data)?;
         }
 
@@ -448,28 +458,28 @@ impl OpusPage {
             granule_position: other_page.granule_position,
             serial_no: other_page.serial_no,
             page_no: other_page.page_no,
-            checksum: Some(0),
+            checksum: 0,
             segment_count: 0,
             segments: Vec::new(),
         }
     }
 
-    pub fn seek_to_page_header<R: Read + Seek>(reader: &mut R) -> std::io::Result<bool> {
+    pub fn seek_to_page_header<R: ReadSeekSend>(reader: &mut R) -> Result<bool> {
         let current_pos = reader.stream_position()?;
         reader.seek(SeekFrom::End(0))?;
         let size = reader.stream_position()?;
         reader.seek(SeekFrom::Start(current_pos))?;
 
-        let mut five_bytes = vec![0u8; 5];
-        reader.read_exact(&mut five_bytes)?;
+        let mut five_bytes = vec![0; 5];
+        let mut read_result = reader.read_exact(&mut five_bytes);
 
-        while reader.stream_position()? + 5 < size {
+        while read_result.is_ok() && reader.stream_position()? + 5 < size {
             if five_bytes == b"OggS\x00" {
                 reader.seek(SeekFrom::Current(-5))?;
                 return Ok(true);
             }
             reader.seek(SeekFrom::Current(-4))?;
-            reader.read_exact(&mut five_bytes)?;
+            read_result = reader.read_exact(&mut five_bytes);
         }
 
         Ok(false)

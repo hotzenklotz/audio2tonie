@@ -1,25 +1,34 @@
+use anyhow::{anyhow, Result};
+use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
+use protobuf::Message;
+use sha1::{Digest, Sha1};
 use std::fs::File;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::SpooledTempFile;
-use sha1::{Sha1, Digest};
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
-use log::info;
-use std::fmt;
 
+use crate::opus_packet::OpusPacket;
 use crate::opus_page::OpusPage;
+use crate::tonie_header::tonie_header::TonieHeader;
 
 const SAMPLE_RATE_KHZ: u32 = 48;
 
 // Original OPUS_TAGS converted to Rust static arrays
 static OPUS_TAGS: [&[u8]; 2] = [
-    &[0x4f, 0x70, 0x75, 0x73, 0x54, 0x61, 0x67, 0x73, /* ... */],
-    &[0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, /* ... */],
+    &[
+        0x4f, 0x70, 0x75, 0x73, 0x54, 0x61, 0x67, 0x73, /* ... */
+    ],
+    &[
+        0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, /* ... */
+    ],
 ];
 
 pub struct Converter;
+
+pub trait ReadSeekSend: Read + Seek + Send {}
+impl<T: Read + Seek + Send> ReadSeekSend for T {}
 
 impl Converter {
     pub fn new() -> Self {
@@ -36,9 +45,9 @@ impl Converter {
         cbr: bool,
         ffmpeg: &str,
         opusenc: &str,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let mut out_file = File::create(output_file)?;
-        
+
         if !no_tonie_header {
             out_file.write_all(&vec![0u8; 0x1000])?;
         }
@@ -46,41 +55,46 @@ impl Converter {
         let timestamp = match user_timestamp {
             Some(ts) => {
                 if ts.starts_with("0x") {
-                    u64::from_str_radix(&ts[2..], 16).unwrap()
+                    u32::from_str_radix(&ts[2..], 16).unwrap()
                 } else {
-                    ts.parse::<u64>().unwrap()
+                    ts.parse::<u32>().unwrap()
                 }
-            },
+            }
             None => SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs(),
+                .as_secs()
+                .try_into()
+                .unwrap(),
         };
 
         let mut sha1 = Sha1::new();
         let mut template_page = None;
-        let mut chapters = Vec::new();
+        let mut chapters: Vec<u32> = Vec::new();
         let mut total_granule = 0;
         let mut next_page_no = 2;
         let max_size = 0x1000;
         let mut other_size = 0xE00;
 
         let pad_len = (input_files.len() + 1).to_string().len();
-        
+
         for (index, fname) in input_files.iter().enumerate() {
-            println!("[{:0width$}/{}] {}", 
-                    index + 1, 
-                    input_files.len(), 
-                    fname.display(),
-                    width = pad_len);
-            
+            println!(
+                "[{:0width$}/{}] {}",
+                index + 1,
+                input_files.len(),
+                fname.display(),
+                width = pad_len
+            );
+
             let last_track = index == input_files.len() - 1;
 
-            let mut handle = if fname.extension().unwrap_or_default() == "opus" {
-                Box::new(File::open(fname)?) as Box<dyn Read + Send>
-            } else {
-                self.get_opus_tempfile(ffmpeg, opusenc, fname, bitrate, !cbr)?
-            };
+            let mut handle: Box<dyn ReadSeekSend> =
+                if fname.extension().unwrap_or_default() == "opus" {
+                    Box::new(File::open(fname)?)
+                } else {
+                    self.get_opus_tempfile(ffmpeg, opusenc, fname, bitrate, !cbr)?
+                };
 
             if next_page_no == 2 {
                 self.copy_first_and_second_page(&mut handle, &mut out_file, timestamp, &mut sha1)?;
@@ -99,7 +113,7 @@ impl Converter {
             if next_page_no == 2 {
                 chapters.push(0);
             } else {
-                chapters.push(next_page_no as i32);
+                chapters.push(next_page_no);
             }
 
             let new_pages = self.resize_pages(
@@ -123,7 +137,7 @@ impl Converter {
         }
 
         if !no_tonie_header {
-            self.fix_tonie_header(&mut out_file, &chapters, timestamp, &mut sha1)?;
+            self.fix_tonie_header(&mut out_file, chapters, timestamp, &mut sha1)?;
         }
 
         Ok(())
@@ -132,22 +146,23 @@ impl Converter {
     fn fix_tonie_header(
         &self,
         out_file: &mut File,
-        chapters: &[i32],
-        timestamp: u64,
+        chapters: Vec<u32>,
+        timestamp: u32,
         sha: &mut Sha1,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         let mut tonie_header = TonieHeader {
-            data_hash: sha.finalize_reset().to_vec(),
-            data_length: out_file.stream_position()? - 0x1000,
+            dataHash: sha.finalize_reset().to_vec(),
+            dataLength: (out_file.stream_position()? - 0x1000) as u32,
             timestamp,
-            chapter_pages: chapters.to_vec(),
+            chapterPages: chapters,
             padding: vec![0; 0x100],
+            special_fields: Default::default(),
         };
 
-        let header = tonie_header.encode_to_vec();
+        let header = tonie_header.write_to_bytes()?;
         let pad = 0xFFC - header.len() + 0x100;
         tonie_header.padding = vec![0; pad];
-        let header = tonie_header.encode_to_vec();
+        let header = tonie_header.write_to_bytes()?;
 
         out_file.seek(SeekFrom::Start(0))?;
         out_file.write_u32::<BigEndian>(header.len() as u32)?;
@@ -158,54 +173,54 @@ impl Converter {
 
     fn copy_first_and_second_page(
         &self,
-        in_file: &mut dyn Read,
+        in_file: &mut impl ReadSeekSend,
         out_file: &mut File,
-        timestamp: u64,
+        timestamp: u32,
         sha: &mut Sha1,
-    ) -> io::Result<()> {
+    ) -> Result<()> {
         if !OpusPage::seek_to_page_header(in_file)? {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "First ogg page not found"));
+            return Err(anyhow!("First ogg page not found"));
         }
-        let mut page = OpusPage::read_page(in_file)?;
+        let mut page = OpusPage::from_reader(in_file)?;
         page.serial_no = timestamp;
         page.checksum = page.calc_checksum();
         self.check_identification_header(&page)?;
         page.write_page(out_file, sha)?;
 
         if !OpusPage::seek_to_page_header(in_file)? {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Second ogg page not found"));
+            return Err(anyhow!("Second ogg page not found"));
         }
-        let mut page = OpusPage::read_page(in_file)?;
+
+        let mut page = OpusPage::from_reader(in_file)?;
         page.serial_no = timestamp;
         page.checksum = page.calc_checksum();
-        page = self.prepare_opus_tags(page);
+        page = self.prepare_opus_tags(page)?;
         page.write_page(out_file, sha)?;
 
         Ok(())
     }
-
-    fn skip_first_two_pages(&self, in_file: &mut dyn Read) -> io::Result<()> {
+    fn skip_first_two_pages(&self, in_file: &mut impl ReadSeekSend) -> Result<()> {
         if !OpusPage::seek_to_page_header(in_file)? {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "First ogg page not found"));
+            return Err(anyhow!("First ogg page not found"));
         }
-        let page = OpusPage::read_page(in_file)?;
+        let page = OpusPage::from_reader(in_file)?;
         self.check_identification_header(&page)?;
 
         if !OpusPage::seek_to_page_header(in_file)? {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Second ogg page not found"));
+            return Err(anyhow!("Second ogg page not found"));
         }
-        OpusPage::read_page(in_file)?;
+        OpusPage::from_reader(in_file)?;
 
         Ok(())
     }
 
-    fn read_all_remaining_pages(&self, in_file: &mut dyn Read) -> io::Result<Vec<OpusPage>> {
+    fn read_all_remaining_pages(&self, in_file: &mut impl ReadSeekSend) -> Result<Vec<OpusPage>> {
         let mut remaining_pages = Vec::new();
 
         while OpusPage::seek_to_page_header(in_file)? {
-            remaining_pages.push(OpusPage::read_page(in_file)?);
+            remaining_pages.push(OpusPage::from_reader(in_file)?);
         }
-        
+
         Ok(remaining_pages)
     }
 
@@ -215,10 +230,10 @@ impl Converter {
         max_page_size: usize,
         first_page_size: usize,
         template_page: &OpusPage,
-        last_granule: i64,
+        last_granule: u64,
         start_no: u32,
         set_last_page_flag: bool,
-    ) -> io::Result<Vec<OpusPage>> {
+    ) -> Result<Vec<OpusPage>> {
         let mut new_pages = Vec::new();
         let mut current_page = None;
         let mut page_no = start_no;
@@ -237,8 +252,9 @@ impl Converter {
             let size = page.get_size_of_first_opus_packet();
             let seg_count = page.get_segment_count_of_first_opus_packet();
 
-            if (size + seg_count + new_page.get_page_size() <= max_size) 
-                && (new_page.segments.len() + seg_count < 256) {
+            if (size + seg_count + new_page.get_page_size() <= max_size)
+                && (new_page.segments.len() + seg_count < 256)
+            {
                 for _ in 0..seg_count {
                     if let Some(segment) = page.segments.first().cloned() {
                         new_page.segments.push(segment);
@@ -248,8 +264,8 @@ impl Converter {
                     current_page = Some(page);
                 }
             } else {
-                new_page.pad(max_size);
-                new_page.correct_values(last_granule);
+                new_page.pad(max_size, Default::default())?;
+                new_page.correct_values(last_granule)?;
                 new_pages.push(new_page);
 
                 new_page = OpusPage::from_page(template_page);
@@ -263,70 +279,72 @@ impl Converter {
             if set_last_page_flag {
                 new_page.page_type = 4;
             }
-            new_page.pad(max_size);
-            new_page.correct_values(last_granule);
+            new_page.pad(max_size, Default::default())?;
+            new_page.correct_values(last_granule)?;
             new_pages.push(new_page);
         }
 
         Ok(new_pages)
     }
 
-    fn prepare_opus_tags(&self, mut page: OpusPage) -> OpusPage {
+    fn prepare_opus_tags(&self, mut page: OpusPage) -> Result<OpusPage> {
         page.segments.clear();
-        
-        let mut segment = OpusPacket::new();
-        segment.size = OPUS_TAGS[0].len();
+
+        let mut segment = OpusPacket::new::<std::io::Empty>(None, 0, 0, false)
+            .expect("Failed to create OpusPacket");
+        segment.size = OPUS_TAGS[0].len() as i32;
         segment.data = OPUS_TAGS[0].to_vec();
         segment.spanning_packet = true;
         segment.first_packet = true;
         page.segments.push(segment);
 
-        let mut segment = OpusPacket::new();
-        segment.size = OPUS_TAGS[1].len();
+        let mut segment = OpusPacket::new::<std::io::Empty>(None, 0, 0, false)
+            .expect("Failed to create OpusPacket");
+        segment.size = OPUS_TAGS[1].len() as i32;
         segment.data = OPUS_TAGS[1].to_vec();
         segment.spanning_packet = false;
         segment.first_packet = false;
         page.segments.push(segment);
-        
-        page.correct_values(0);
-        page
+
+        page.correct_values(0)?;
+        return Ok(page)
     }
 
-    fn check_identification_header(&self, page: &OpusPage) -> io::Result<()> {
+    fn check_identification_header(&self, page: &OpusPage) -> Result<()> {
         if let Some(segment) = page.segments.first() {
             let data = &segment.data[..18];
             let magic = &data[..8];
             let version = data[8];
             let channels = data[9];
-            let sample_rate = LittleEndian::read_u32(&data[12..16]);
+            let sample_rate = byteorder::LittleEndian::read_u32(&data[12..16]);
 
             if magic != b"OpusHead" {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid opus file?"));
+                return Err(anyhow!("Invalid opus file?"));
             }
             if version != 1 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid opus file?"));
+                return Err(anyhow!("Invalid opus file?"));
             }
             if channels != 2 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "Only stereo tracks are supported"));
+                return Err(anyhow!("Only stereo tracks are supported"));
             }
             if sample_rate != SAMPLE_RATE_KHZ * 1000 {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "Sample rate needs to be 48 kHz"));
+                return Err(anyhow!("Sample rate needs to be 48 kHz"));
             }
         }
         Ok(())
     }
 
-    fn get_opus_tempfile(
+    pub fn get_opus_tempfile(
         &self,
         ffmpeg_binary: &str,
         opus_binary: &str,
         filename: &PathBuf,
         bitrate: u32,
         vbr: bool,
-    ) -> io::Result<Box<dyn Read + Send>> {
+    ) -> Result<Box<SpooledTempFile>> {
         let vbr_parameter = if !vbr { "--hard-cbr" } else { "--vbr" };
 
-        let mut ffmpeg_process = Command::new(ffmpeg_binary)
+        let ffmpeg_process = Command::new(ffmpeg_binary)
             .args([
                 "-hide_banner",
                 "-loglevel",
@@ -342,9 +360,7 @@ impl Converter {
             .stdout(Stdio::piped())
             .spawn()?;
 
-        let ffmpeg_stdout = ffmpeg_process.stdout.take().unwrap();
-
-        let mut opusenc_process = Command::new(opus_binary)
+        let opusenc_process = Command::new(opus_binary)
             .args([
                 "--quiet",
                 vbr_parameter,
@@ -353,15 +369,19 @@ impl Converter {
                 "-",
                 "-",
             ])
-            .stdin(ffmpeg_stdout)
+            .stdin(ffmpeg_process.stdout.unwrap())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            // .stderr(Stdio::null())
             .spawn()?;
 
-        let mut tmp_file = SpooledTempFile::new();
-        if let Some(mut stdout) = opusenc_process.stdout.take() {
-            io::copy(&mut stdout, &mut tmp_file)?;
+        let mut tmp_file = SpooledTempFile::new(50 * 1024 * 1024);
+
+        // Await processes to finish
+        let opusenc_status = opusenc_process.wait_with_output()?;
+        if !opusenc_status.status.success() {
+            return Err(anyhow!("opusenc failed: {}", opusenc_status.status));
         }
+        tmp_file.write(&opusenc_status.stdout).ok();
         tmp_file.seek(SeekFrom::Start(0))?;
 
         Ok(Box::new(tmp_file))

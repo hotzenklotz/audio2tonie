@@ -1,4 +1,3 @@
-#![allow(warnings)]
 mod cli;
 mod converter;
 mod utils;
@@ -46,10 +45,10 @@ fn main() -> Result<()> {
 
             let converter = Converter::new();
             converter.create_tonie_file(
-                &PathBuf::from(output),
-                &[input],
+                PathBuf::from(output),
+                vec![input],
                 no_tonie_header,
-                timestamp,
+                timestamp.map(|t| t.to_string()),
                 bitrate,
                 cbr,
                 &ffmpeg,

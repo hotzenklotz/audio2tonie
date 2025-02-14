@@ -14,6 +14,7 @@ sha1 = "0.10"
 chrono = "0.4"
 walkdir = "2.5"
 lazy_static = "1.5"
+log = "0.4"
 
 [dev-dependencies]
 assert_fs = "1.1"

@@ -107,6 +107,7 @@ dependencies = [
  "chrono",
  "clap",
  "lazy_static",
+ "log",
  "predicates",
  "protobuf",
  "protobuf-codegen",
