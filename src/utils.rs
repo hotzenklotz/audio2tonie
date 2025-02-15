@@ -1,4 +1,4 @@
-use crate::opus_page::OpusPage;
+use crate::ogg_page::OggPage;
 use crate::tonie_header::tonie_header::TonieHeader;
 use anyhow::{anyhow, Result};
 use byteorder::{BigEndian, ReadBytesExt};
@@ -156,11 +156,11 @@ pub fn get_header_info(
     let audio_size = file_size - file.stream_position()?;
 
     // Read first Opus page
-    let found = OpusPage::seek_to_page_header(file)?;
+    let found = OggPage::seek_to_page_header(file)?;
     if !found {
         anyhow::bail!("First ogg page not found");
     }
-    let first_page = OpusPage::from_reader(file)?;
+    let first_page = OggPage::from_reader(file)?;
 
     // Parse Opus header data
     let segment_data = &first_page.segments[0].data;
@@ -175,11 +175,11 @@ pub fn get_header_info(
     let bitstream_serial_no = first_page.serial_no;
 
     // Read second page (discard)
-    let found = OpusPage::seek_to_page_header(file)?;
+    let found = OggPage::seek_to_page_header(file)?;
     if !found {
         anyhow::bail!("Second ogg page not found");
     }
-    OpusPage::from_reader(file)?;
+    OggPage::from_reader(file)?;
 
     Ok((
         header_size,
@@ -217,13 +217,13 @@ pub fn get_audio_info(
     let mut page_count = 2;
 
     let mut last_page = None;
-    let mut found = OpusPage::seek_to_page_header(file)?;
+    let mut found = OggPage::seek_to_page_header(file)?;
 
     while found {
         page_count += 1;
-        let page = OpusPage::from_reader(file)?;
+        let page = OggPage::from_reader(file)?;
 
-        found = OpusPage::seek_to_page_header(file)?;
+        found = OggPage::seek_to_page_header(file)?;
         if found && file.stream_position()? % 0x1000 != 0 {
             alignment_okay = false;
         }
@@ -308,23 +308,23 @@ pub fn split_to_opus_files(input: &Path, output_dir: Option<&Path>) -> Result<Ve
     fs::create_dir_all(&out_path)?;
 
     // Read first three pages
-    let found = OpusPage::seek_to_page_header(&mut file)?;
+    let found = OggPage::seek_to_page_header(&mut file)?;
     if !found {
         anyhow::bail!("First ogg page not found");
     }
-    let first_page = OpusPage::from_reader(&mut file)?;
+    let first_page = OggPage::from_reader(&mut file)?;
 
-    let found = OpusPage::seek_to_page_header(&mut file)?;
+    let found = OggPage::seek_to_page_header(&mut file)?;
     if !found {
         anyhow::bail!("Second ogg page not found");
     }
-    let second_page = OpusPage::from_reader(&mut file)?;
+    let second_page = OggPage::from_reader(&mut file)?;
 
-    let found = OpusPage::seek_to_page_header(&mut file)?;
+    let found = OggPage::seek_to_page_header(&mut file)?;
     if !found {
         anyhow::bail!("End of file reached before finding a page");
     }
-    let mut page = OpusPage::from_reader(&mut file)?;
+    let mut page = OggPage::from_reader(&mut file)?;
 
     // Store the first and second pages' data
     let first_page_data = first_page.clone();
@@ -351,21 +351,21 @@ pub fn split_to_opus_files(input: &Path, output_dir: Option<&Path>) -> Result<Ve
         outfiles.push(out_file_path.clone());
 
         let mut out_file = File::create(&out_file_path)?;
-        let mut sha1 = Sha1::new();
+        let mut sha1_hasher = Sha1::new();
 
         // Write the first and second pages' data
-        first_page_data.write_page(&mut out_file, &mut sha1)?;
-        second_page_data.write_page(&mut out_file, &mut sha1)?;
+        first_page_data.write_page(&mut out_file, Some(&mut sha1_hasher))?;
+        second_page_data.write_page(&mut out_file, Some(&mut sha1_hasher))?;
 
         let mut found = true;
         while found && (page.page_no < end_page || end_page == 0) {
             page.correct_values(granule)?;
             granule = page.granule_position;
-            page.write_page(&mut out_file, &mut sha1)?;
+            page.write_page(&mut out_file, Some(&mut sha1_hasher))?;
 
-            found = OpusPage::seek_to_page_header(&mut file)?;
+            found = OggPage::seek_to_page_header(&mut file)?;
             if found {
-                page = OpusPage::from_reader(&mut file)?;
+                page = OggPage::from_reader(&mut file)?;
             }
         }
     }

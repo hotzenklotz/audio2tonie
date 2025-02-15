@@ -2,14 +2,14 @@ mod cli;
 mod converter;
 mod utils;
 mod opus_packet;
-mod opus_page;
+mod ogg_page;
 mod tonie_header;
 
 #[cfg(test)]
 mod tests;
 
 use anyhow::Result;
-use crate::cli::{get_cli, Command};
+use crate::cli::{get_cli, CLICommands};
 use crate::converter::Converter;
 use crate::utils::{check_tonie_file, split_to_opus_files};
 use std::path::PathBuf;
@@ -18,15 +18,15 @@ fn main() -> Result<()> {
     let cli = get_cli();
 
     match cli.command {
-        Command::Info { input } => {
+        CLICommands::Info { input } => {
             let ok = check_tonie_file(&input)?;
             std::process::exit(if ok { 0 } else { 1 });
         }
-        Command::Split { input, output } => {
+        CLICommands::Extract { input, output } => {
             split_to_opus_files(&input, output.as_deref())?;
             std::process::exit(0);
         }
-        Command::Convert {
+        CLICommands::Convert {
             input,
             output,
             timestamp,

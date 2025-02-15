@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::SpooledTempFile;
 
 use crate::opus_packet::OpusPacket;
-use crate::opus_page::OpusPage;
+use crate::ogg_page::OggPage;
 use crate::tonie_header::tonie_header::TonieHeader;
 
 const SAMPLE_RATE_KHZ: u32 = 48;
@@ -68,7 +68,7 @@ impl Converter {
                 .unwrap(),
         };
 
-        let mut sha1 = Sha1::new();
+        let mut sha1_hasher = Sha1::new();
         let mut template_page = None;
         let mut chapters: Vec<u32> = Vec::new();
         let mut total_granule = 0;
@@ -97,7 +97,7 @@ impl Converter {
                 };
 
             if next_page_no == 2 {
-                self.copy_first_and_second_page(&mut handle, &mut out_file, timestamp, &mut sha1)?;
+                self.copy_first_and_second_page(&mut handle, &mut out_file, timestamp, &mut sha1_hasher)?;
             } else {
                 other_size = max_size;
                 self.skip_first_two_pages(&mut handle)?;
@@ -106,7 +106,7 @@ impl Converter {
             let pages = self.read_all_remaining_pages(&mut handle)?;
 
             if template_page.is_none() {
-                template_page = Some(OpusPage::from_page(&pages[0]));
+                template_page = Some(OggPage::from_page(&pages[0]));
                 template_page.as_mut().unwrap().serial_no = timestamp;
             }
 
@@ -127,7 +127,7 @@ impl Converter {
             )?;
 
             for new_page in &new_pages {
-                new_page.write_page(&mut out_file, &mut sha1)?;
+                new_page.write_page(&mut out_file, Some(&mut sha1_hasher))?;
             }
 
             if let Some(last_page) = new_pages.last() {
@@ -137,7 +137,7 @@ impl Converter {
         }
 
         if !no_tonie_header {
-            self.fix_tonie_header(&mut out_file, chapters, timestamp, &mut sha1)?;
+            self.fix_tonie_header(&mut out_file, chapters, timestamp, &mut sha1_hasher)?;
         }
 
         Ok(())
@@ -148,10 +148,10 @@ impl Converter {
         out_file: &mut File,
         chapters: Vec<u32>,
         timestamp: u32,
-        sha: &mut Sha1,
+        sha_hasher: &mut Sha1,
     ) -> Result<()> {
         let mut tonie_header = TonieHeader {
-            dataHash: sha.finalize_reset().to_vec(),
+            dataHash: sha_hasher.finalize_reset().to_vec(),
             dataLength: (out_file.stream_position()? - 0x1000) as u32,
             timestamp,
             chapterPages: chapters,
@@ -176,49 +176,49 @@ impl Converter {
         in_file: &mut impl ReadSeekSend,
         out_file: &mut File,
         timestamp: u32,
-        sha: &mut Sha1,
+        sha_hasher: &mut Sha1,
     ) -> Result<()> {
-        if !OpusPage::seek_to_page_header(in_file)? {
+        if !OggPage::seek_to_page_header(in_file)? {
             return Err(anyhow!("First ogg page not found"));
         }
-        let mut page = OpusPage::from_reader(in_file)?;
+        let mut page = OggPage::from_reader(in_file)?;
         page.serial_no = timestamp;
         page.checksum = page.calc_checksum();
         self.check_identification_header(&page)?;
-        page.write_page(out_file, sha)?;
+        page.write_page(out_file, Some(sha_hasher))?;
 
-        if !OpusPage::seek_to_page_header(in_file)? {
+        if !OggPage::seek_to_page_header(in_file)? {
             return Err(anyhow!("Second ogg page not found"));
         }
 
-        let mut page = OpusPage::from_reader(in_file)?;
+        let mut page = OggPage::from_reader(in_file)?;
         page.serial_no = timestamp;
         page.checksum = page.calc_checksum();
         page = self.prepare_opus_tags(page)?;
-        page.write_page(out_file, sha)?;
+        page.write_page(out_file, Some(sha_hasher))?;
 
         Ok(())
     }
     fn skip_first_two_pages(&self, in_file: &mut impl ReadSeekSend) -> Result<()> {
-        if !OpusPage::seek_to_page_header(in_file)? {
+        if !OggPage::seek_to_page_header(in_file)? {
             return Err(anyhow!("First ogg page not found"));
         }
-        let page = OpusPage::from_reader(in_file)?;
+        let page = OggPage::from_reader(in_file)?;
         self.check_identification_header(&page)?;
 
-        if !OpusPage::seek_to_page_header(in_file)? {
+        if !OggPage::seek_to_page_header(in_file)? {
             return Err(anyhow!("Second ogg page not found"));
         }
-        OpusPage::from_reader(in_file)?;
+        OggPage::from_reader(in_file)?;
 
         Ok(())
     }
 
-    fn read_all_remaining_pages(&self, in_file: &mut impl ReadSeekSend) -> Result<Vec<OpusPage>> {
+    fn read_all_remaining_pages(&self, in_file: &mut impl ReadSeekSend) -> Result<Vec<OggPage>> {
         let mut remaining_pages = Vec::new();
 
-        while OpusPage::seek_to_page_header(in_file)? {
-            remaining_pages.push(OpusPage::from_reader(in_file)?);
+        while OggPage::seek_to_page_header(in_file)? {
+            remaining_pages.push(OggPage::from_reader(in_file)?);
         }
 
         Ok(remaining_pages)
@@ -226,20 +226,20 @@ impl Converter {
 
     fn resize_pages(
         &self,
-        mut old_pages: Vec<OpusPage>,
+        mut old_pages: Vec<OggPage>,
         max_page_size: usize,
         first_page_size: usize,
-        template_page: &OpusPage,
+        template_page: &OggPage,
         last_granule: u64,
         start_no: u32,
         set_last_page_flag: bool,
-    ) -> Result<Vec<OpusPage>> {
+    ) -> Result<Vec<OggPage>> {
         let mut new_pages = Vec::new();
         let mut current_page = None;
         let mut page_no = start_no;
         let mut max_size = first_page_size;
 
-        let mut new_page = OpusPage::from_page(template_page);
+        let mut new_page = OggPage::from_page(template_page);
         new_page.page_no = page_no;
 
         while !old_pages.is_empty() || current_page.is_some() {
@@ -268,7 +268,7 @@ impl Converter {
                 new_page.correct_values(last_granule)?;
                 new_pages.push(new_page);
 
-                new_page = OpusPage::from_page(template_page);
+                new_page = OggPage::from_page(template_page);
                 page_no += 1;
                 new_page.page_no = page_no;
                 max_size = max_page_size;
@@ -287,7 +287,7 @@ impl Converter {
         Ok(new_pages)
     }
 
-    fn prepare_opus_tags(&self, mut page: OpusPage) -> Result<OpusPage> {
+    fn prepare_opus_tags(&self, mut page: OggPage) -> Result<OggPage> {
         page.segments.clear();
 
         let mut segment = OpusPacket::new::<std::io::Empty>(None, 0, 0, false)
@@ -310,7 +310,7 @@ impl Converter {
         return Ok(page)
     }
 
-    fn check_identification_header(&self, page: &OpusPage) -> Result<()> {
+    fn check_identification_header(&self, page: &OggPage) -> Result<()> {
         if let Some(segment) = page.segments.first() {
             let data = &segment.data[..18];
             let magic = &data[..8];

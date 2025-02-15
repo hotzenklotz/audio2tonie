@@ -176,13 +176,16 @@ impl OpusPacket {
         self.framepacking = 3;
     }
 
-    pub fn set_pad_count(&mut self, count: u32) -> Result<()> {
-        if self.framepacking != 3 {
-            return Err(anyhow!("Only code 3 packets can contain padding!"));
-        }
-        if self.padding != Some(0) {
-            return Err(anyhow!("Packet already padded. Not supported yet!"));
-        }
+    pub fn set_pad_count(&mut self, count: usize) -> Result<()> {
+        assert_eq!(self.framepacking, 3, "Only code 3 packets can contain padding!");
+        assert_eq!(self.padding, None, "Packet already padded. Not supported yet!");
+
+        // if self.framepacking != 3 {
+        //     return Err(anyhow!("Only code 3 packets can contain padding!"));
+        // }
+        // if self.padding != Some(0) {
+        //     return Err(anyhow!("Packet already padded. Not supported yet!"));
+        // }
 
         let frame_count_byte = self.data[1] | 0b01000000;
 

@@ -1,6 +1,6 @@
 use crate::opus_packet::OpusPacket;
-use crate::opus_page::{
-    OpusPage, DO_NOTHING, ONLY_CONVERT_FRAMEPACKING, OTHER_PACKET_NEEDED, TOO_MANY_SEGMENTS,
+use crate::ogg_page::{
+    OggPage, DO_NOTHING, ONLY_CONVERT_FRAMEPACKING, OTHER_PACKET_NEEDED, TOO_MANY_SEGMENTS,
 };
 use std::fs::File;
 use std::path::Path;
@@ -8,65 +8,65 @@ use std::path::Path;
 const TEST_FILES_DIR: &str = "src/tests/test_files";
 const TEST_TONIE_FILE: &str = "test_1.1739039539.taf";
 
-fn create_opus_page() -> OpusPage {
+fn create_ogg_page() -> OggPage {
     let test_tonie_file = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
     let mut input_file = File::open(test_tonie_file).unwrap();
 
-    OpusPage::seek_to_page_header(&mut input_file).ok();
-    let opus_page = OpusPage::from_reader(&mut input_file).unwrap();
+    OggPage::seek_to_page_header(&mut input_file).ok();
+    let ogg_page = OggPage::from_reader(&mut input_file).unwrap();
 
-    return opus_page;
+    return ogg_page;
 }
 
 #[test]
 fn test_parse_header() {
-    let opus_page = create_opus_page();
+    let ogg_page = create_ogg_page();
 
-    assert_eq!(opus_page.version, 0);
-    assert_eq!(opus_page.page_type, 2);
-    assert_eq!(opus_page.granule_position, 0);
-    assert_eq!(opus_page.serial_no, 1739039539);
-    assert_eq!(opus_page.page_no, 0);
-    assert_eq!(opus_page.checksum, 706853594);
-    assert_eq!(opus_page.segment_count, 1);
-    assert_eq!(opus_page.segments.len(), 1);
+    assert_eq!(ogg_page.version, 0);
+    assert_eq!(ogg_page.page_type, 2);
+    assert_eq!(ogg_page.granule_position, 0);
+    assert_eq!(ogg_page.serial_no, 1739039539);
+    assert_eq!(ogg_page.page_no, 0);
+    assert_eq!(ogg_page.checksum, 706853594);
+    assert_eq!(ogg_page.segment_count, 1);
+    assert_eq!(ogg_page.segments.len(), 1);
 }
 
 #[test]
 fn test_checksum() {
-    let opus_page = create_opus_page();
+    let ogg_page = create_ogg_page();
 
-    let checksum = opus_page.calc_checksum();
+    let checksum = ogg_page.calc_checksum();
     assert_eq!(checksum, 706853594);
 }
 
 #[test]
 fn test_get_page_size() {
-    let opus_page = create_opus_page();
+    let ogg_page = create_ogg_page();
 
-    let page_size = opus_page.get_page_size();
+    let page_size = ogg_page.get_page_size();
     assert_eq!(page_size, 47);
 }
 
 #[test]
 fn test_get_packet_size() {
-    let opus_page = create_opus_page();
+    let ogg_page = create_ogg_page();
 
-    let packet_size = opus_page.get_opus_packet_size(0);
+    let packet_size = ogg_page.get_opus_packet_size(0);
     assert_eq!(packet_size, 19);
 }
 
 #[test]
 fn test_get_segment_count_of_packet_at() {
-    let opus_page = create_opus_page();
+    let ogg_page = create_ogg_page();
 
-    let segment_count = opus_page.get_segment_count_of_packet_at(0);
+    let segment_count = ogg_page.get_segment_count_of_packet_at(0);
     assert_eq!(segment_count, 1);
 }
 
-// Helper function to create a basic OpusPage for testing
-fn create_padding_test_page() -> OpusPage {
-    let mut page = OpusPage::new();
+// Helper function to create a basic OggPage for testing
+fn create_padding_test_page() -> OggPage {
+    let mut page = OggPage::new();
     page.version = 0;
     page.page_type = 2;
     page.granule_position = 0;
@@ -168,6 +168,32 @@ fn test_pad_one_byte() {
 }
 
 #[test]
+fn test_pad_one_byte_multiple_times2() {
+    let mut padding_test_page = create_padding_test_page();
+    padding_test_page.segments = get_segments_by_size(10);
+
+    let initial_size = padding_test_page.get_page_size();
+
+    for _i in 0..150 {
+        padding_test_page.pad_one_byte().unwrap();
+    }
+
+    assert_eq!(padding_test_page.get_page_size(), initial_size + 150);
+}
+
+#[test]
+fn test_pad_one_byte_multiple_times() {
+    let mut padding_test_page = create_padding_test_page();
+    let initial_size = padding_test_page.get_page_size();
+
+    for _i in 0..255 {
+        padding_test_page.pad_one_byte().unwrap();
+    }
+
+    assert_eq!(padding_test_page.get_page_size(), initial_size + 255);
+}
+
+#[test]
 fn test_pad_valid_padding() {
     let mut padding_test_page = create_padding_test_page();
     padding_test_page.segments[0].padding = Some(0);
@@ -183,8 +209,10 @@ fn get_segments_by_size(size: usize) -> Vec<OpusPacket> {
     let padding_test_page = create_padding_test_page();
 
     let mut segments = Vec::with_capacity(size);
-    for _ in 0..size {
-        segments.push(padding_test_page.segments[0].clone());
+    for i in 0..size {
+        let mut new_segment = padding_test_page.segments[0].clone();
+        new_segment.first_packet = i == 0;
+        segments.push(new_segment);
     }
     return segments;
 }
