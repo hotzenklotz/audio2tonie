@@ -7,3 +7,6 @@
 # Auto-generated
 src/tonie_header/mod.rs
 src/tonie_header/tonie_header.rs
+
+# VS Code
+.vscode

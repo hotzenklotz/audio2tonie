@@ -5,54 +5,29 @@ use std::path::PathBuf;
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: CLICommands,
 }
 
 #[derive(Subcommand)]
-pub enum Command {
-    /// Check and display info about Tonie file
-    Info {
-        /// Input file
+pub enum CLICommands {
+    #[command(about="Extract the audio content from a Tonie file and save it as new Ogg Opus file.")]
+    Extract {
+        #[arg(required=true, long, short, help="The input audio file in Tonie format.")]
         input: PathBuf,
-    },
-    /// Split Tonie file into opus tracks
-    Split {
-        /// Input file
-        input: PathBuf,
-        /// Output directory
+        #[arg(required=true, long, short, help="The output directory for saving the extracted audio content in.")]
         output: Option<PathBuf>,
     },
-    /// Convert files to Tonie format
+    #[command(about="Convert a single audio file or a directory of audio files into a Toniebox compatible audio file. Input audio files can be in any audio format that can be handled and converted by ffmpeg.")]
     Convert {
-        /// Input file or directory
+        #[arg(required=true, long, short, help="The input audio file or a directory of files.")]
         input: PathBuf,
-        /// Output file
-        #[arg(default_value = "500304E0")]
+        #[arg(long, short, default_value = "500304E0", help="The output audio file.")]
         output: PathBuf,
-        /// Custom timestamp
-        timestamp: Option<u32>,
-        /// Don't write Tonie header
-        #[arg(long)]
-        no_tonie_header: bool,
-        /// Encoding bitrate in kbps
-        #[arg(long, default_value = "96")]
-        bitrate: u32,
-        /// Use constant bitrate
-        #[arg(long)]
-        cbr: bool,
-        /// Path to ffmpeg
-        #[arg(long, default_value = "ffmpeg")]
+        #[arg(long, default_value = "ffmpeg", help="Path to ffmpeg executable on your system.")]
         ffmpeg: String,
-        /// Path to opusenc
-        #[arg(long, default_value = "opusenc")]
-        opusenc: String,
-        /// Append [500304E0] to filename
-        #[arg(long)]
-        append_tonie_filename: bool,
-    },
+   },
 }
 
 pub fn get_cli() -> Cli {
     Cli::parse()
-
 }
