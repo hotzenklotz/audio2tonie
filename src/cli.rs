@@ -14,7 +14,7 @@ pub enum CLICommands {
     Extract {
         #[arg(required=true, long, short, help="The input audio file in Tonie format.")]
         input: PathBuf,
-        #[arg(required=true, long, short, help="The output directory for saving the extracted audio content in.")]
+        #[arg(long, short, help="The output directory for saving the extracted audio content in.")]
         output: Option<PathBuf>,
     },
     #[command(about="Convert a single audio file or a directory of audio files into a Toniebox compatible audio file. Input audio files can be in any audio format that can be handled and converted by ffmpeg.")]

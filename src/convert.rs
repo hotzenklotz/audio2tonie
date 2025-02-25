@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use human_sort::compare;
 use std::fs::File;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -26,7 +27,7 @@ pub fn convert_to_tonie(
         .and_then(|os_str| os_str.to_str())
         .map(|file_name| vec![file_name]);
 
-    let output_file = File::create(output_file_path).unwrap();
+    let output_file = File::create(output_file_path)?;
     let mut toniefile = Toniefile::new(&output_file, 0x12345678, user_comments).unwrap();
 
     input_files
@@ -81,15 +82,22 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
     return Ok(ffmpeg_status.stdout);
 }
 
-fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
+pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
     if input_file.is_file() && is_file_extension_supported(&input_file) {
         return Ok(vec![input_file.to_path_buf()]);
     } else if input_file.is_dir() {
-        let paths = std::fs::read_dir(input_file)?
+        let mut paths = std::fs::read_dir(input_file)?
             .filter_map(|res| res.ok())
             .map(|dir_entry| dir_entry.path())
             .filter(is_file_extension_supported)
             .collect::<Vec<_>>();
+
+        paths.sort_by(|a, b| {
+            compare(
+                &a.file_name().expect("Unable to read file name").to_string_lossy(),
+                &b.file_name().expect("Unable to read file name").to_string_lossy(),
+            )
+        });
 
         return Ok(paths);
     } else {
