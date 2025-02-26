@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "glob",
  "human-sort",
  "rand 0.9.0",
  "tempfile",

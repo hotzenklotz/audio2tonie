@@ -1,34 +1,40 @@
 use std::{
     fs::File,
+    io::Read,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
+    ffi::OsStr
 };
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
+use glob::glob;
 use tempfile::Builder;
-use toniefile::Toniefile;
 
 use crate::extract::extract_tonie_to_opus;
 
 const TEST_FILES_DIR: &str = "src/tests/test_files";
 const TEST_TONIE_FILE: &str = "test_1.taf";
+const TEST_TONIE_FILE_WITH_CHAPTERS: &str = "multiple_chapters.taf";
 
 #[test]
 fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
     // Test the "extract" command without any given output path.
     // Expect to reuse the input file name with ".ogg" extension in the current working directory.
-    
+
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
     let expected_output_path =
-    PathBuf::from(".").join(test_tonie_path.with_extension("ogg").file_name().unwrap());
-    let expected_output_file = File::open(&expected_output_path)?;
-    
+        PathBuf::from(".").join(test_tonie_path.with_extension("ogg").file_name().unwrap());
+
     extract_tonie_to_opus(&test_tonie_path, None)?;
-    
+
+    let mut expected_output_file = File::open(&expected_output_path)?;
+    let mut audio_data: Vec<u8> = vec![0; 10];
+    expected_output_file.read_exact(&mut audio_data)?;
+
     assert!(expected_output_path.exists());
     assert!(expected_output_file.metadata()?.size() > 0);
+    assert!(audio_data.starts_with(b"OggS"));
 
-    
     Ok(())
 }
 
@@ -36,18 +42,19 @@ fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
 fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
     // Test "extract" command with just an output directory given, but no specify file name.
     // Expect to reuse the input file name with ".ogg" extension in the specified directory.
-    
+
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
     let output_path = PathBuf::from(".");
     let expected_output_path =
-    output_path.join(test_tonie_path.with_extension("ogg").file_name().unwrap());
-    let expected_output_file = File::open(&expected_output_path)?;
-    
+        output_path.join(test_tonie_path.with_extension("ogg").file_name().unwrap());
+
     extract_tonie_to_opus(&test_tonie_path, Some(output_path.clone()))?;
-    
+
+    let expected_output_file = File::open(&expected_output_path)?;
+
     assert!(expected_output_path.exists());
     assert!(expected_output_file.metadata()?.size() > 0);
-    
+
     Ok(())
 }
 
@@ -59,7 +66,10 @@ fn test_extract_tonie_to_opus_with_output_file_name() -> Result<()> {
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
     let expected_output_file = Builder::new().suffix(".opus").tempfile()?;
 
-    extract_tonie_to_opus(&test_tonie_path, Some(expected_output_file.path().to_path_buf()))?;
+    extract_tonie_to_opus(
+        &test_tonie_path,
+        Some(expected_output_file.path().to_path_buf()),
+    )?;
 
     assert!(expected_output_file.as_file().metadata()?.size() > 0);
 
@@ -67,14 +77,30 @@ fn test_extract_tonie_to_opus_with_output_file_name() -> Result<()> {
 }
 
 #[test]
-fn test_extract_audio_from_toniefile() -> anyhow::Result<()> {
-    let test_taf_file_path = Path::new(TEST_FILES_DIR).join("test_1.1739039539.taf");
-    let mut test_taf_file = File::open(test_taf_file_path)?;
+fn test_extract_tonie_to_opus_with_multiple_chapters() -> Result<()> {
+    let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE_WITH_CHAPTERS);
+    let expected_output_dir = Builder::new().prefix("tonie_test_dir").tempdir()?;
 
-    let audio_data = Toniefile::extract_audio(&mut test_taf_file)?;
+    extract_tonie_to_opus(
+        &test_tonie_path,
+        Some(expected_output_dir.path().to_path_buf()),
+    )?;
 
-    assert!(audio_data.starts_with(b"OggS"));
-    assert!(audio_data.len() > 0);
+    let glob_path = expected_output_dir.path().join("*.ogg");
+    let glob_path_str = glob_path.to_str().unwrap();
+    let ogg_files = glob(glob_path_str)?
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
+
+    assert_eq!(ogg_files.len(), 12);
+
+    for ogg_file in ogg_files {
+        assert!(ogg_file
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap()
+            .starts_with(char::is_numeric));
+    }
 
     Ok(())
 }
