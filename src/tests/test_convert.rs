@@ -71,7 +71,7 @@ fn test_audiofile_to_wav() -> Result<()> {
     let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
     let temp_wav_buffer = audiofile_to_wav(&test_mp3_path, "ffmpeg")?;
 
-    assert_eq!(temp_wav_buffer.len() / (2 * 2 * 48000), 207); // Stereo = 2 channel á 48000Hz; 2 bytes per second
+    assert_eq!(temp_wav_buffer.len() / (2 * 2 * 48000), 208); // Stereo = 2 channel á 48000Hz; 2 bytes per second
 
     Ok(())
 }

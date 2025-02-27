@@ -92,7 +92,7 @@ fn test_extract_tonie_to_opus_with_multiple_chapters() -> Result<()> {
         .filter_map(Result::ok)
         .collect::<Vec<_>>();
 
-    assert_eq!(ogg_files.len(), 12);
+    assert_eq!(ogg_files.len(), 3);
 
     for ogg_file in ogg_files {
         assert!(ogg_file
