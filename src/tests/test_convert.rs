@@ -14,9 +14,9 @@ use crate::{
     utils::are_files_equal,
 };
 
-const TEST_FILES_DIR: &str = "src/tests/test_files";
-const TEST_TONIE_FILE: &str = "test_1.taf";
-const TEST_MP3_FILE: &str = "test_1.mp3";
+const TEST_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
+const TEST_TONIE_FILE: &str = "src/tests/test_files/test_1.taf";
+const TEST_MP3_FILE: &str = "src/tests/test_files/test_1.mp3";
 
 #[test]
 fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {

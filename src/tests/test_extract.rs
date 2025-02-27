@@ -12,9 +12,9 @@ use tempfile::Builder;
 
 use crate::extract::extract_tonie_to_opus;
 
-const TEST_FILES_DIR: &str = "src/tests/test_files";
-const TEST_TONIE_FILE: &str = "test_1.taf";
-const TEST_TONIE_FILE_WITH_CHAPTERS: &str = "multiple_chapters.taf";
+const TEST_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
+const TEST_TONIE_FILE: &str = "src/tests/test_files/test_1.taf";
+const TEST_TONIE_FILE_WITH_CHAPTERS: &str = "src/tests/test_files/multiple_chapters.taf";
 
 #[test]
 fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
@@ -40,7 +40,7 @@ fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
 
 #[test]
 fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
-    // Test "extract" command with just an output directory given, but no specify file name.
+    // Test the "extract" command with just an output directory given, but no specify file name.
     // Expect to reuse the input file name with ".ogg" extension in the specified directory.
 
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
@@ -60,7 +60,7 @@ fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
 
 #[test]
 fn test_extract_tonie_to_opus_with_output_file_name() -> Result<()> {
-    // Test "extract" command with just an output path given, including a specified file name.
+    // Test the "extract" command with just an output path given, including a specified file name.
     // Expect to use the specified output directory and file name.
 
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
