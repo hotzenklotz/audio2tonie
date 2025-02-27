@@ -8,7 +8,7 @@ on:
 
 defaults:
   run:
-    working-directory: ${GITHUB_WORKSPACE}
+    working-directory: "${GITHUB_WORKSPACE}"
 
 jobs:
   build_and_test:
