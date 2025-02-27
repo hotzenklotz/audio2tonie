@@ -1,12 +1,12 @@
 use anyhow::Result;
-use tempfile::{tempdir, NamedTempFile, TempDir};
+use rand::rng;
+use rand::seq::SliceRandom;
 use std::{
     fs::{self, File},
     os::unix::fs::MetadataExt,
-    path::Path,
+    path::{Path, PathBuf},
 };
-use rand::seq::SliceRandom;
-use rand::rng;
+use tempfile::{tempdir, NamedTempFile, TempDir};
 use toniefile::Toniefile;
 
 use crate::{
@@ -50,11 +50,7 @@ fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
         )?;
     }
 
-    let converted_file = convert_to_tonie(
-        &temp_dir.to_path_buf(),
-        &temp_output_path,
-        String::from("ffmpeg"),
-    )?;
+    let converted_file = convert_to_tonie(&temp_dir, &temp_output_path, String::from("ffmpeg"))?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
@@ -62,6 +58,34 @@ fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
     let header = Toniefile::parse_header(&mut temp_output_file)?;
 
     assert_eq!(header.track_page_nums.len(), 3);
+
+    Ok(())
+}
+
+#[test]
+fn test_convert_to_tonie_with_default_output() -> anyhow::Result<()> {
+    let test_input_path = PathBuf::from(TEST_FILES_DIR);
+    let temp_output_path = tempdir()?.into_path();
+
+    let converted_file =
+        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
+
+    assert!(converted_file.metadata()?.size() > 0);
+
+    Ok(())
+}
+
+#[test]
+fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
+    let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
+    let temp_output_path = tempdir()?.into_path();
+    let expected_output_path = temp_output_path.join("500304E0");
+
+    let converted_file =
+        convert_to_tonie(&test_mp3_path, &temp_output_path, String::from("ffmpeg"))?;
+
+    assert!(converted_file.metadata()?.size() > 0);
+    assert!(expected_output_path.exists());
 
     Ok(())
 }

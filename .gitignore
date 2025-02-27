@@ -10,3 +10,7 @@ src/tonie_header/tonie_header.rs
 
 # VS Code
 .vscode
+
+# Test Artifacts
+extracted_toniefile.ogg
+test_1.ogg

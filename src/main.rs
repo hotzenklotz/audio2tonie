@@ -16,16 +16,15 @@ fn main() -> Result<()> {
 
     match cli.command {
         CLICommands::Extract { input, output } => {
-            extract_tonie_to_opus(&input, output)?;
+            return extract_tonie_to_opus(&input, output);
         }
         CLICommands::Convert {
             input,
             output,
             ffmpeg,
         } => {
-            convert_to_tonie(&input, &output, ffmpeg)?;
+            let _file = convert_to_tonie(&input, &output, ffmpeg);
+            return Ok(());
         }
     };
-
-    Ok(())
 }

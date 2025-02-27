@@ -9,13 +9,19 @@ use crate::utils::vec_u8_to_i16;
 
 const SUPPORTED_FILE_EXTENSIONS: [&str; 6] = ["mp3", "aac", "wav", "ogg", "webm", "opus"];
 
+/// Converts an input file into a Tonie compatible Ogg Opus audio file with the custom Tonie header and correctly sized 4kb opus content blocks.
+/// If the input is a directory then all files will be converted into a single Tonie file with multiple chapters.
+///
+/// # Arguments
+///
+/// * `input_file_path` - The path to the input file or a directory.
+/// * `output_file_path` - The path to the output file.
+/// * `ffmpeg` - The path to the ffmpeg executable.
 pub fn convert_to_tonie(
     input_file_path: &PathBuf,
     output_file_path: &PathBuf,
     ffmpeg: String,
 ) -> Result<File> {
-    // Converts an input file into Tonie compatible Ogg Opus audio file with the custom Tonie header and correctly sized 4kb opus content blocks.
-    // If the input is a directory then all files will be converted into a single Tonie file with multiple chapters.
 
     let input_files = filter_input_files(input_file_path)?;
 
@@ -27,7 +33,13 @@ pub fn convert_to_tonie(
         .and_then(|os_str| os_str.to_str())
         .map(|file_name| vec![file_name]);
 
-    let output_file = File::create(output_file_path)?;
+    let output_file_path_validated = if output_file_path.is_dir() {
+        &output_file_path.join("500304E0")
+    } else {
+        output_file_path
+    };
+
+    let output_file = File::create(output_file_path_validated)?;
     let mut toniefile = Toniefile::new(&output_file, 0x12345678, user_comments).unwrap();
 
     input_files
@@ -53,6 +65,12 @@ pub fn convert_to_tonie(
     return Ok(output_file);
 }
 
+/// Converts an audio file to a WAV file using ffmpeg.
+///
+/// # Arguments
+///
+/// * `file_path` - The path to the input audio file.
+/// * `ffmpeg` - The path to the ffmpeg executable.
 pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
     let ffmpeg_process = Command::new(ffmpeg)
         .args([
@@ -82,6 +100,11 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
     return Ok(ffmpeg_status.stdout);
 }
 
+/// Filters the input files based on whether they are a supported file or a directory containing supported files.
+///
+/// # Arguments
+///
+/// * `input_file` - The path to the input file or a directory.
 pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
     if input_file.is_file() && is_file_extension_supported(&input_file) {
         return Ok(vec![input_file.to_path_buf()]);
@@ -94,8 +117,12 @@ pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
 
         paths.sort_by(|a, b| {
             compare(
-                &a.file_name().expect("Unable to read file name").to_string_lossy(),
-                &b.file_name().expect("Unable to read file name").to_string_lossy(),
+                &a.file_name()
+                    .expect("Unable to read file name")
+                    .to_string_lossy(),
+                &b.file_name()
+                    .expect("Unable to read file name")
+                    .to_string_lossy(),
             )
         });
 
@@ -105,6 +132,11 @@ pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
     }
 }
 
+/// Checks if the file extension is supported.
+///
+/// # Arguments
+///
+/// * `input_file_path` - The path to the input file.
 fn is_file_extension_supported(input_file_path: &PathBuf) -> bool {
     return input_file_path.extension().map_or(false, |ext| {
         SUPPORTED_FILE_EXTENSIONS
