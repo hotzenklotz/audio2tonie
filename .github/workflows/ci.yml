@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ "main" ]
 
+defaults:
+  run:
+    working-directory: ${GITHUB_WORKSPACE}
+
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
@@ -16,6 +20,6 @@ jobs:
     - name: Run cargo check
       run: cargo check
     - name: Run cargo test
-      run: cargo test --all-features
+      run: pwd && cargo test --all-features
       env:
         RUST_BACKTRACE: 1
