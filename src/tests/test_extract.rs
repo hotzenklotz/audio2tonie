@@ -78,6 +78,8 @@ fn test_extract_tonie_to_opus_with_output_file_name() -> Result<()> {
 
 #[test]
 fn test_extract_tonie_to_opus_with_multiple_chapters() -> Result<()> {
+    // Test the "extract" command with a Tonie file that contains multiple chapters.
+    // Expect to extract each chapter into a separate audio file.
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE_WITH_CHAPTERS);
     let expected_output_dir = Builder::new().prefix("tonie_test_dir").tempdir()?;
 
