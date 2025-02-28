@@ -6,16 +6,29 @@ on:
   pull_request:
     branches: [ "main" ]
 
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
+
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Install stable toolchain
+    - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
+    - name: Install ffmpeg
+      uses: FedericoCarboni/setup-ffmpeg@v3
     - name: Run cargo check
       run: cargo check
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
+      if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
     - name: Run cargo test
-      run: pwd && cargo test --all-features
+      run: cargo test --all-features
       env:
         RUST_BACKTRACE: 1
