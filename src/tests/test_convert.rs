@@ -2,11 +2,11 @@ use anyhow::Result;
 use rand::rng;
 use rand::seq::SliceRandom;
 use std::{
-    fs::{self, File},
+    fs::File, 
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
-use tempfile::{tempdir, NamedTempFile, TempDir};
+use tempfile::{tempdir, NamedTempFile};
 use toniefile::Toniefile;
 
 use crate::{
@@ -15,8 +15,8 @@ use crate::{
 };
 
 const TEST_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
-const TEST_TONIE_FILE: &str = "src/tests/test_files/test_1.taf";
-const TEST_MP3_FILE: &str = "src/tests/test_files/test_1.mp3";
+const TEST_TONIE_FILE: &str = "resources/test/test_1.taf";
+const TEST_MP3_FILE: &str = "resources/test/test_1.mp3";
 
 #[test]
 fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
@@ -38,19 +38,11 @@ fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
 
 #[test]
 fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
-    let temp_dir = TempDir::new()?.into_path();
-    let test_input_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
+    let temp_dir = tempdir()?.into_path();
+    let test_input_path = Path::new(TEST_FILES_DIR).join("resources").join("test");
     let temp_output_path = temp_dir.join("test_tonie.taf");
 
-    // Reuse the same file three times and simulate a directory full individual audio files
-    for i in 0..3 {
-        fs::copy(
-            &test_input_mp3_path,
-            temp_dir.join(format!("input_{}.mp3", i)),
-        )?;
-    }
-
-    let converted_file = convert_to_tonie(&temp_dir, &temp_output_path, String::from("ffmpeg"))?;
+    let converted_file = convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
@@ -77,7 +69,7 @@ fn test_convert_to_tonie_with_default_output() -> anyhow::Result<()> {
 
 #[test]
 fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
-    let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
+    let test_mp3_path = Path::new(TEST_FILES_DIR).join("resources").join("test");
     let temp_output_path = tempdir()?.into_path();
     let expected_output_path = temp_output_path.join("500304E0");
 

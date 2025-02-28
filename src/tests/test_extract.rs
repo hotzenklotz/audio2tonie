@@ -13,8 +13,8 @@ use tempfile::Builder;
 use crate::extract::extract_tonie_to_opus;
 
 const TEST_FILES_DIR: &str = env!("CARGO_MANIFEST_DIR");
-const TEST_TONIE_FILE: &str = "src/tests/test_files/test_1.taf";
-const TEST_TONIE_FILE_WITH_CHAPTERS: &str = "src/tests/test_files/multiple_chapters.taf";
+const TEST_TONIE_FILE: &str = "resources/test/test_1.taf";
+const TEST_TONIE_FILE_WITH_CHAPTERS: &str = "resources/test/multiple_chapters.taf";
 
 #[test]
 fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
