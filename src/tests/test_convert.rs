@@ -51,12 +51,14 @@ fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
 
     // Check that the converted file exists and has content
     assert!(converted_file.metadata()?.size() > 0);
-    assert!(are_files_equal(test_tonie_file, temp_file.into_file())?);
 
     // Check that the converted file has a valid Tonie header
     let mut converted_file = File::open(temp_file.path())?;
     let header = Toniefile::parse_header(&mut converted_file)?;
     assert_eq!(header.track_page_nums.len(), 1); // Single file should have one track
+
+    // Now we can safely convert temp_file to a regular file for comparison
+    assert!(are_files_equal(test_tonie_file, temp_file.into_file())?);
 
     Ok(())
 }
