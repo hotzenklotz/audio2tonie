@@ -53,6 +53,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
