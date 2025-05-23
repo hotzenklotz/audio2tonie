@@ -17,7 +17,12 @@ pub fn extract_tonie_to_opus(
             if path.is_file() {
                 path
             } else {
-                path.join("extracted_toniefile.ogg")
+                path.join(
+                    input_file_path
+                        .with_extension("ogg")
+                        .file_name()
+                        .expect("Input file path must have a file name"),
+                )
             }
         })
         .unwrap_or_else(|| {

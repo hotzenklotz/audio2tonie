@@ -1,12 +1,12 @@
 use std::{
+    ffi::OsStr,
     fs::File,
     io::Read,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    ffi::OsStr
 };
 
-use anyhow::{Ok, Result};
+use anyhow::{Context, Ok, Result};
 use glob::glob;
 use tempfile::Builder;
 
@@ -18,16 +18,26 @@ const TEST_TONIE_FILE_WITH_CHAPTERS: &str = "resources/test/multiple_chapters.ta
 
 #[test]
 fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
-    // Test the "extract" command without any given output path.
-    // Expect to reuse the input file name with ".ogg" extension in the current working directory.
-
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
+
+    // Verify test file exists
+    assert!(
+        test_tonie_path.exists(),
+        "Test Tonie file not found at: {}",
+        test_tonie_path.display()
+    );
+
     let expected_output_path =
         PathBuf::from(".").join(test_tonie_path.with_extension("ogg").file_name().unwrap());
 
     extract_tonie_to_opus(&test_tonie_path, None)?;
 
-    let mut expected_output_file = File::open(&expected_output_path)?;
+    let mut expected_output_file = File::open(&expected_output_path).with_context(|| {
+        format!(
+            "Failed to open output file at: {}",
+            expected_output_path.display()
+        )
+    })?;
     let mut audio_data: Vec<u8> = vec![0; 10];
     expected_output_file.read_exact(&mut audio_data)?;
 
@@ -40,20 +50,38 @@ fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
 
 #[test]
 fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
-    // Test the "extract" command with just an output directory given, but no specify file name.
-    // Expect to reuse the input file name with ".ogg" extension in the specified directory.
-
     let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
-    let output_path = PathBuf::from(".");
+
+    // Verify test file exists
+    assert!(
+        test_tonie_path.exists(),
+        "Test Tonie file not found at: {}",
+        test_tonie_path.display()
+    );
+
+    let output_path = std::env::current_dir()?;
     let expected_output_path =
         output_path.join(test_tonie_path.with_extension("ogg").file_name().unwrap());
 
+    // Clean up any existing output file
+    if expected_output_path.exists() {
+        std::fs::remove_file(&expected_output_path)?;
+    }
+
     extract_tonie_to_opus(&test_tonie_path, Some(output_path.clone()))?;
 
-    let expected_output_file = File::open(&expected_output_path)?;
+    let expected_output_file = File::open(&expected_output_path).with_context(|| {
+        format!(
+            "Failed to open output file at: {}",
+            expected_output_path.display()
+        )
+    })?;
 
     assert!(expected_output_path.exists());
     assert!(expected_output_file.metadata()?.size() > 0);
+
+    // Clean up the output file after the test
+    std::fs::remove_file(&expected_output_path)?;
 
     Ok(())
 }
