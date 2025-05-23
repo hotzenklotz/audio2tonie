@@ -30,6 +30,11 @@ jobs:
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
       if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+    - name: Verify ffmpeg installation
+      run: |
+        which ffmpeg
+        ffmpeg -version
+        echo "PATH is: $PATH"
     - name: Run cargo test
       run: cargo test --all-features
       env:

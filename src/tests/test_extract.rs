@@ -21,7 +21,8 @@ fn test_extract_tonie_to_opus_without_output_path() -> Result<()> {
     // Test the "extract" command without any given output path.
     // Expect to reuse the input file name with ".ogg" extension in a temporary directory.
 
-    let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
+    let test_tonie_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE))
+        .expect("Failed to canonicalize test Tonie path");
     let temp_dir = tempdir()?; // Create a temporary directory.
     // When output_file_path is a directory, extract_tonie_to_opus creates "extracted_toniefile.ogg" in it.
     let expected_output_path = temp_dir.path().join("extracted_toniefile.ogg");
@@ -45,7 +46,8 @@ fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
     // Test the "extract" command with just an output directory given, but no specify file name.
     // Expect to reuse the input file name with ".ogg" extension in the specified temporary directory.
 
-    let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
+    let test_tonie_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE))
+        .expect("Failed to canonicalize test Tonie path");
     let temp_dir = tempdir()?; // Create a temporary directory.
     // output_path is the temporary directory.
     let output_path = temp_dir.path().to_path_buf(); 
@@ -68,7 +70,8 @@ fn test_extract_tonie_to_opus_with_output_file_name() -> Result<()> {
     // Test the "extract" command with just an output path given, including a specified file name.
     // Expect to use the specified output directory and file name.
 
-    let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
+    let test_tonie_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE))
+        .expect("Failed to canonicalize test Tonie path");
     let expected_output_file = Builder::new().suffix(".opus").tempfile()?;
 
     extract_tonie_to_opus(
@@ -85,7 +88,8 @@ fn test_extract_tonie_to_opus_with_output_file_name() -> Result<()> {
 fn test_extract_tonie_to_opus_with_multiple_chapters() -> Result<()> {
     // Test the "extract" command with a Tonie file that contains multiple chapters.
     // Expect to extract each chapter into a separate audio file.
-    let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE_WITH_CHAPTERS);
+    let test_tonie_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE_WITH_CHAPTERS))
+        .expect("Failed to canonicalize test Tonie with chapters path");
     let expected_output_dir = Builder::new().prefix("tonie_test_dir").tempdir()?;
 
     extract_tonie_to_opus(

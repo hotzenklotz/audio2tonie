@@ -20,8 +20,11 @@ const TEST_MP3_FILE: &str = "resources/test/test_1.mp3";
 
 #[test]
 fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
-    let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
-    let test_tonie_file = File::open(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE))?;
+    let test_mp3_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE))
+        .expect("Failed to canonicalize test MP3 path");
+    let test_tonie_file_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE))
+        .expect("Failed to canonicalize test Tonie file path");
+    let test_tonie_file = File::open(test_tonie_file_path)?;
     let temp_file = NamedTempFile::new()?;
 
     let converted_file = convert_to_tonie(
@@ -39,7 +42,8 @@ fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
 #[test]
 fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
     let temp_dir = tempdir()?.into_path();
-    let test_input_path = Path::new(TEST_FILES_DIR).join("resources").join("test");
+    let test_input_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join("resources").join("test"))
+        .expect("Failed to canonicalize test input directory path");
     let temp_output_path = temp_dir.join("test_tonie.taf");
 
     let converted_file = convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
@@ -56,7 +60,8 @@ fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
 
 #[test]
 fn test_convert_to_tonie_with_default_output() -> anyhow::Result<()> {
-    let test_input_path = PathBuf::from(TEST_FILES_DIR);
+    let test_input_path = std::fs::canonicalize(PathBuf::from(TEST_FILES_DIR))
+        .expect("Failed to canonicalize test input directory path");
     let temp_output_path = tempdir()?.into_path();
 
     let converted_file =
@@ -69,12 +74,13 @@ fn test_convert_to_tonie_with_default_output() -> anyhow::Result<()> {
 
 #[test]
 fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
-    let test_mp3_path = Path::new(TEST_FILES_DIR).join("resources").join("test");
+    let test_input_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join("resources").join("test"))
+        .expect("Failed to canonicalize test input directory path");
     let temp_output_path = tempdir()?.into_path();
     let expected_output_path = temp_output_path.join("500304E0");
 
     let converted_file =
-        convert_to_tonie(&test_mp3_path, &temp_output_path, String::from("ffmpeg"))?;
+        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
 
     assert!(converted_file.metadata()?.size() > 0);
     assert!(expected_output_path.exists());
@@ -84,7 +90,9 @@ fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
 
 #[test]
 fn test_audiofile_to_wav() -> Result<()> {
-    let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
+    let test_mp3_path = std::fs::canonicalize(Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE))
+        .expect("Failed to canonicalize test MP3 path");
+    // Revert to using "ffmpeg" assuming it's in PATH
     let temp_wav_buffer = audiofile_to_wav(&test_mp3_path, "ffmpeg")?;
 
     assert_eq!(temp_wav_buffer.len() / (2 * 2 * 48000), 208); // Stereo = 2 channel á 48000Hz; 2 bytes per second
@@ -95,7 +103,8 @@ fn test_audiofile_to_wav() -> Result<()> {
 #[test]
 fn test_filter_input_files() -> Result<()> {
     let temp_dir = tempdir()?;
-    let temp_path = temp_dir.path();
+    let temp_path = std::fs::canonicalize(temp_dir.path())
+        .expect("Failed to canonicalize temp directory path");
 
     let mut temp_input_files = vec![
         temp_path.join("1. MyFile.mp3"),
@@ -113,7 +122,8 @@ fn test_filter_input_files() -> Result<()> {
         File::create(file_name)?;
     }
 
-    let validated_paths = filter_input_files(&temp_path.to_path_buf())?;
+    // filter_input_files expects a directory, so we use temp_path which is already canonicalized.
+    let validated_paths = filter_input_files(&temp_path)?; 
     assert_eq!(temp_input_files, validated_paths);
 
     // Shuffle file name order. This should conflict with the sorted and validated input files

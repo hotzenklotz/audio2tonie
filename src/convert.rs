@@ -74,21 +74,19 @@ pub fn convert_to_tonie(
 /// * `file_path` - The path to the input audio file.
 /// * `ffmpeg` - The path to the ffmpeg executable.
 pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
-    let ffmpeg_process = Command::new(ffmpeg)
-        .args([
-            "-hide_banner",
-            "-loglevel",
-            "warning",
-            "-i",
-            file_path.to_str().unwrap(),
-            "-f",
-            "wav",
-            "-ar",
-            "48000",
-            "-",
-        ])
-        .stdout(Stdio::piped())
-        .spawn()?;
+    let mut cmd = Command::new(ffmpeg);
+    cmd.arg("-hide_banner");
+    cmd.arg("-loglevel");
+    cmd.arg("warning");
+    cmd.arg("-i");
+    cmd.arg(file_path); // PathBuf/Path implement AsRef<OsStr>
+    cmd.arg("-f");
+    cmd.arg("wav");
+    cmd.arg("-ar");
+    cmd.arg("48000");
+    cmd.arg("-");
+    
+    let ffmpeg_process = cmd.stdout(Stdio::piped()).spawn()?;
 
     // Await processes to finish
     let ffmpeg_status = ffmpeg_process.wait_with_output()?;
