@@ -64,16 +64,19 @@ jobs:
       - name: Build
         run: cargo build --release
 
-      - name: Prepare artifacts
+      - name: Prepare artifacts (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            mv target/release/audio2tonie.exe audio2tonie.exe
-            zip -j ${{ matrix.artifact_name }}.zip audio2tonie.exe
-          else
             mv target/release/audio2tonie audio2tonie
             zip -j ${{ matrix.artifact_name }}.zip audio2tonie
-          fi
+
+      - name: Prepare artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+            Move-Item -Path "target/release/audio2tonie.exe" -Destination "audio2tonie.exe"
+            Compress-Archive -Path "audio2tonie.exe" -DestinationPath "${{ matrix.artifact_name }}.zip" -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
