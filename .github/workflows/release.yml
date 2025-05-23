@@ -66,9 +66,9 @@ jobs:
       
       - name: Build (MacOS)
         if: matrix.os == 'macos-latest'
-        run: 
-          brew install opus protobuf
-          cargo build --release
+        run: |
+            brew install opus protobuf
+            cargo build --release
 
       - name: Prepare artifacts (Linux/macOS)
         if: matrix.os != 'windows-latest'
