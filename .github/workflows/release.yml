@@ -53,10 +53,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install Protoc
-        if: matrix.os == 'macos-latest'
-        uses: arduino/setup-protoc@v3
-
       - name: Install Homebrew
         if: matrix.os == 'macos-latest'
         uses:  Homebrew/actions/setup-homebrew@master
@@ -71,7 +67,7 @@ jobs:
       - name: Build (MacOS)
         if: matrix.os == 'macos-latest'
         run: 
-          brew install opus
+          brew install opus protobuf
           cargo build --release
 
       - name: Prepare artifacts (Linux/macOS)
