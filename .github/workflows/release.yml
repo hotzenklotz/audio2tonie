@@ -54,13 +54,25 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install Protoc
+        if: matrix.os == 'macos-latest'
         uses: arduino/setup-protoc@v3
+
+      - name: Install Homebrew
+        if: matrix.os == 'macos-latest'
+        uses:  Homebrew/actions/setup-homebrew@master
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Build
+      - name: Build (Windows/Linux)
+        if : matrix.os != 'macos-latest'
         run: cargo build --release
+      
+      - name: Build (MacOS)
+        if : matrix.os != 'macos-latest'
+        run: 
+          brew install opus
+          cargo build --release
 
       - name: Prepare artifacts (Linux/macOS)
         if: matrix.os != 'windows-latest'
