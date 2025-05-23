@@ -7,6 +7,23 @@ This project is a command-line interface (CLI) application that converts audio f
 
 ## Installation
 
+### Option 1: Download Pre-built Binary
+
+Download the latest release for your platform from the [GitHub releases page](https://github.com/hotzenklotz/audio2tonie/releases):
+
+- Windows: `audio2tonie-windows.zip`
+- Linux: `audio2tonie-linux.zip`
+- macOS: `audio2tonie-macos.zip`
+
+Extract the zip file and make the binary executable (on Linux/macOS):
+```bash
+chmod +x audio2tonie
+```
+
+### Option 2: Build from Source
+
+If you prefer to build from source:
+
 ```bash
 cargo install --path .
 ```
