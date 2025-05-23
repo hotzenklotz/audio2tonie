@@ -59,9 +59,14 @@ fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
         test_tonie_path.display()
     );
 
-    let output_path = PathBuf::from(".");
+    let output_path = std::env::current_dir()?;
     let expected_output_path =
         output_path.join(test_tonie_path.with_extension("ogg").file_name().unwrap());
+
+    // Clean up any existing output file
+    if expected_output_path.exists() {
+        std::fs::remove_file(&expected_output_path)?;
+    }
 
     extract_tonie_to_opus(&test_tonie_path, Some(output_path.clone()))?;
 
@@ -74,6 +79,9 @@ fn test_extract_tonie_to_opus_with_output_path() -> Result<()> {
 
     assert!(expected_output_path.exists());
     assert!(expected_output_file.metadata()?.size() > 0);
+
+    // Clean up the output file after the test
+    std::fs::remove_file(&expected_output_path)?;
 
     Ok(())
 }
