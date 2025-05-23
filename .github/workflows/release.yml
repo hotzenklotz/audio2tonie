@@ -1,0 +1,128 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  unit_test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install ffmpeg
+        uses: AnimMouse/setup-ffmpeg@v1
+        with:
+          version: 7.1
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --all-features
+        env:
+          RUST_BACKTRACE: "full"
+
+  build:
+    name: Build for ${{ matrix.os }}
+    needs: unit_test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: audio2tonie-linux
+          - os: windows-latest
+            artifact_name: audio2tonie-windows
+          - os: macos-latest
+            artifact_name: audio2tonie-macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install ffmpeg
+        uses: AnimMouse/setup-ffmpeg@v1
+        with:
+          version: 7.1
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            mv target/release/audio2tonie.exe audio2tonie.exe
+            zip -j ${{ matrix.artifact_name }}.zip audio2tonie.exe
+          else
+            mv target/release/audio2tonie audio2tonie
+            zip -j ${{ matrix.artifact_name }}.zip audio2tonie
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+
+  test:
+    name: Test Linux Binary
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install ffmpeg
+        uses: AnimMouse/setup-ffmpeg@v1
+        with:
+          version: 7.1
+
+      - name: Test Linux binary
+        shell: bash
+        run: |
+          unzip artifacts/audio2tonie-linux/audio2tonie-linux.zip
+          chmod +x audio2tonie
+          ./audio2tonie --help
+
+  release:
+    name: Create Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/audio2tonie-linux/audio2tonie-linux.zip
+            artifacts/audio2tonie-windows/audio2tonie-windows.zip
+            artifacts/audio2tonie-macos/audio2tonie-macos.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
