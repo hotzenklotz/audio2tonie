@@ -33,8 +33,10 @@ pub fn convert_to_tonie(
         .and_then(|os_str| os_str.to_str())
         .map(|file_name| vec![file_name]);
 
+    let owned_output_file_path; // Declare a variable with a longer lifetime
     let output_file_path_validated = if output_file_path.is_dir() {
-        &output_file_path.join("500304E0")
+        owned_output_file_path = output_file_path.join("500304E0"); // Assign to the longer-lived variable
+        &owned_output_file_path
     } else {
         output_file_path
     };
