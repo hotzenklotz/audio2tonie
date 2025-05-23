@@ -65,11 +65,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build (Windows/Linux)
-        if : matrix.os != 'macos-latest'
+        if: matrix.os != 'macos-latest'
         run: cargo build --release
       
       - name: Build (MacOS)
-        if : matrix.os != 'macos-latest'
+        if: matrix.os == 'macos-latest'
         run: 
           brew install opus
           cargo build --release
