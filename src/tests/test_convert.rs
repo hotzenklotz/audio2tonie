@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rand::rng;
 use rand::seq::SliceRandom;
 use std::{
-    fs::File, 
+    fs::File,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
@@ -21,7 +21,26 @@ const TEST_MP3_FILE: &str = "resources/test/test_1.mp3";
 #[test]
 fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
     let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
-    let test_tonie_file = File::open(Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE))?;
+    let test_tonie_path = Path::new(TEST_FILES_DIR).join(TEST_TONIE_FILE);
+
+    // Verify test files exist
+    assert!(
+        test_mp3_path.exists(),
+        "Test MP3 file not found at: {}",
+        test_mp3_path.display()
+    );
+    assert!(
+        test_tonie_path.exists(),
+        "Test Tonie file not found at: {}",
+        test_tonie_path.display()
+    );
+
+    let test_tonie_file = File::open(&test_tonie_path).with_context(|| {
+        format!(
+            "Failed to open test Tonie file at: {}",
+            test_tonie_path.display()
+        )
+    })?;
     let temp_file = NamedTempFile::new()?;
 
     let converted_file = convert_to_tonie(
@@ -42,7 +61,8 @@ fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
     let test_input_path = Path::new(TEST_FILES_DIR).join("resources").join("test");
     let temp_output_path = temp_dir.join("test_tonie.taf");
 
-    let converted_file = convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
+    let converted_file =
+        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
