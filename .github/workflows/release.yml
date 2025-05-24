@@ -127,6 +127,8 @@ jobs:
 
       - name: Create tag
         run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
           git tag -a "v${{ steps.get_version.outputs.VERSION }}" -m "Release v${{ steps.get_version.outputs.VERSION }}"
           git push origin "v${{ steps.get_version.outputs.VERSION }}"
 
