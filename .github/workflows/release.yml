@@ -102,6 +102,11 @@ jobs:
         with:
           path: artifacts
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opus
+
       - name: Test Linux binary
         shell: bash
         run: |
