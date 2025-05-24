@@ -119,6 +119,17 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=$(cargo metadata --format-version=1 | jq -r '.packages[0].version')" >> $GITHUB_OUTPUT
+
+      - name: Create tag
+        run: |
+          git tag -a "v${{ steps.get_version.outputs.VERSION }}" -m "Release v${{ steps.get_version.outputs.VERSION }}"
+          git push origin "v${{ steps.get_version.outputs.VERSION }}"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -128,6 +139,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
           files: |
             artifacts/audio2tonie-linux/audio2tonie-linux.zip
             artifacts/audio2tonie-windows/audio2tonie-windows.zip
