@@ -125,15 +125,6 @@ jobs:
         id: get_version
         run: echo "VERSION=$(cargo metadata --format-version=1 | jq -r '.packages[0].version')" >> $GITHUB_OUTPUT
 
-      - name: Create tag
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag -a "v${{ steps.get_version.outputs.VERSION }}" -m "Release v${{ steps.get_version.outputs.VERSION }}"
-          git push origin "v${{ steps.get_version.outputs.VERSION }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -144,10 +135,13 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
           files: |
             artifacts/audio2tonie-linux/audio2tonie-linux.zip
             artifacts/audio2tonie-windows/audio2tonie-windows.zip
             artifacts/audio2tonie-macos/audio2tonie-macos.zip
           generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
