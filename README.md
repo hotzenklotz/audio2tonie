@@ -80,5 +80,6 @@ cargo test
 
 ## Requirements
 
-- Rust (latest stable version)
-- ffmpeg (must be installed and available in PATH or specified via --ffmpeg parameter)
+- `ffmpeg` (must be installed and available in PATH or specified via --ffmpeg parameter)
+- opus audio codec / libopus ([Installation Hints](https://github.com/shardlab/discordrb/wiki/Installing-libopus))
+- Rust (latest stable version for building from source)
