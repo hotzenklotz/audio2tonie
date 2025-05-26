@@ -42,7 +42,7 @@ audio2tonie extract <input_file> [output_directory]
 
 Example:
 ```bash
-audio2tonie extract my_tonie_file.ogg ./extracted_audio
+audio2tonie extract my_tonie_file.taf ./extracted_audio
 ```
 
 ### 2. Convert audio file to Tonie (TAF)
@@ -61,13 +61,16 @@ Parameters:
 Examples:
 ```bash
 # Convert a single file
-audio2tonie convert my_audio.mp3 output.ogg
+audio2tonie convert my_audio.mp3 output.taf
+
+# Convert a single file with default output filename ("500304E0")
+audio2tonie convert my_audio.mp3
 
 # Convert all files in a directory
-audio2tonie convert ./my_audio_files/ output.ogg
+audio2tonie convert ./my_audio_files/ output.taf
 
 # Specify custom ffmpeg path
-audio2tonie convert input.mp3 output.ogg --ffmpeg /usr/local/bin/ffmpeg
+audio2tonie convert input.mp3 output.taf --ffmpeg /usr/local/bin/ffmpeg
 ```
 
 ## Running Tests
