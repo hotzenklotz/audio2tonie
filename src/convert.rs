@@ -22,7 +22,6 @@ pub fn convert_to_tonie(
     output_file_path: &PathBuf,
     ffmpeg: String,
 ) -> Result<File> {
-
     let input_files = filter_input_files(input_file_path)?;
 
     // Use the input file name as a Opus header metadata comment
@@ -83,6 +82,10 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
             "wav",
             "-ar",
             "48000",
+            "-acodec",
+            "pcm_s16le",
+            "-ac",
+            "2",
             "-",
         ])
         .stdout(Stdio::piped())
