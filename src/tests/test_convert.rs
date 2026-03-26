@@ -37,7 +37,7 @@ fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
     let converted_file = convert_to_tonie(
         &test_mp3_path,
         &temp_file.path().to_path_buf(),
-        String::from("ffmpeg"),
+        "ffmpeg",
     )?;
 
     // Check that the converted file exists and has content
@@ -67,7 +67,7 @@ fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
     let temp_output_path = temp_dir.join("test_tonie.taf");
 
     let converted_file =
-        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
+        convert_to_tonie(&test_input_path, &temp_output_path, "ffmpeg")?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
@@ -85,7 +85,7 @@ fn test_convert_to_tonie_with_default_output() -> anyhow::Result<()> {
     let temp_output_path = tempdir()?.into_path();
 
     let converted_file =
-        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
+        convert_to_tonie(&test_input_path, &temp_output_path, "ffmpeg")?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
@@ -99,7 +99,7 @@ fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
     let expected_output_path = temp_output_path.join("500304E0");
 
     let converted_file =
-        convert_to_tonie(&test_mp3_path, &temp_output_path, String::from("ffmpeg"))?;
+        convert_to_tonie(&test_mp3_path, &temp_output_path, "ffmpeg")?;
 
     assert!(converted_file.metadata()?.size() > 0);
     assert!(expected_output_path.exists());

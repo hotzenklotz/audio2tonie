@@ -23,7 +23,7 @@ fn main() -> Result<()> {
             output,
             ffmpeg,
         } => {
-            let _file = convert_to_tonie(&input, &output, ffmpeg);
+            let _file = convert_to_tonie(&input, &output, &ffmpeg);
             return Ok(());
         }
     };

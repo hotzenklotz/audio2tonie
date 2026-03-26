@@ -21,7 +21,7 @@ const SUPPORTED_FILE_EXTENSIONS: [&str; 6] = ["mp3", "aac", "wav", "ogg", "webm"
 pub fn convert_to_tonie(
     input_file_path: &PathBuf,
     output_file_path: &PathBuf,
-    ffmpeg: String,
+    ffmpeg: &str,
 ) -> Result<File> {
     let input_files = filter_input_files(input_file_path)?;
     println!("Found {} file(s) to process.", input_files.len());
@@ -119,7 +119,7 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
 ///
 /// * `input_file` - The path to the input file or a directory.
 pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
-    if input_file.is_file() && is_file_extension_supported(&input_file) {
+    if input_file.is_file() && is_file_extension_supported(input_file) {
         return Ok(vec![input_file.to_path_buf()]);
     } else if input_file.is_dir() {
         let mut paths = std::fs::read_dir(input_file)?
