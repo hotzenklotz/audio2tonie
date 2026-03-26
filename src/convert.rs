@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use human_sort::compare;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -23,6 +24,7 @@ pub fn convert_to_tonie(
     ffmpeg: String,
 ) -> Result<File> {
     let input_files = filter_input_files(input_file_path)?;
+    println!("Found {} file(s) to process.", input_files.len());
 
     // Use the input file name as a Opus header metadata comment
     // Make it easier to identify already encoded files without listening to them
@@ -41,6 +43,11 @@ pub fn convert_to_tonie(
     let output_file = File::create(output_file_path_validated)?;
     let mut toniefile = Toniefile::new(&output_file, 0x12345678, user_comments).unwrap();
 
+    let pb = ProgressBar::new(input_files.len() as u64);
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
+        .unwrap()
+        .progress_chars("#>-"));
+
     input_files
         .iter()
         .filter_map(|input_file| {
@@ -57,7 +64,10 @@ pub fn convert_to_tonie(
                 // Skip this if there is only one file and for the last file in a collection
                 toniefile.new_chapter().ok();
             }
+            pb.inc(1);
         });
+
+    pb.finish_with_message("Conversion complete!");
 
     toniefile.finalize_no_consume()?;
 
