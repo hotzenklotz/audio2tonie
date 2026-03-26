@@ -46,7 +46,7 @@ pub fn convert_to_tonie(
     let pb = ProgressBar::new(input_files.len() as u64);
     pb.set_style(
         ProgressStyle::with_template(
-            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} {msg} ({eta})",
         )
         .unwrap()
         .progress_chars("#>-"),
@@ -55,9 +55,25 @@ pub fn convert_to_tonie(
     input_files
         .iter()
         .filter_map(|input_file| {
-            audiofile_to_wav(input_file, &ffmpeg)
-                .and_then(vec_u8_to_i16)
-                .ok()
+            let file_name = input_file.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown");
+            pb.set_message(file_name.to_string());
+
+            let res = audiofile_to_wav(input_file, ffmpeg);
+            let opt_wav = match res {
+                Ok((wav, stderr)) => {
+                    let stderr = stderr.trim();
+                    if !stderr.is_empty() {
+                        pb.println(format!("ffmpeg warning for {}:\n{}", file_name, stderr));
+                    }
+                    Some(wav)
+                }
+                Err(e) => {
+                    pb.println(format!("ffmpeg error for {}: {}", file_name, e));
+                    None
+                }
+            };
+
+            opt_wav.and_then(|wav| vec_u8_to_i16(wav).ok())
         })
         .enumerate()
         .for_each(|(index, buffer)| {
@@ -84,7 +100,7 @@ pub fn convert_to_tonie(
 ///
 /// * `file_path` - The path to the input audio file.
 /// * `ffmpeg` - The path to the ffmpeg executable.
-pub fn audiofile_to_wav(file_path: &Path, ffmpeg: &str) -> Result<Vec<u8>> {
+pub fn audiofile_to_wav(file_path: &Path, ffmpeg: &str) -> Result<(Vec<u8>, String)> {
     let ffmpeg_process = Command::new(ffmpeg)
         .args([
             "-hide_banner",
@@ -103,18 +119,22 @@ pub fn audiofile_to_wav(file_path: &Path, ffmpeg: &str) -> Result<Vec<u8>> {
             "-",
         ])
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()?;
 
     // Await processes to finish
     let ffmpeg_status = ffmpeg_process.wait_with_output()?;
+    let stderr = String::from_utf8_lossy(&ffmpeg_status.stderr).into_owned();
+    
     if !ffmpeg_status.status.success() {
         return Err(anyhow!(
-            "Conversion with ffmpeg failed: {}",
-            ffmpeg_status.status
+            "Conversion with ffmpeg failed: {}\n{}",
+            ffmpeg_status.status,
+            stderr
         ));
     }
 
-    return Ok(ffmpeg_status.stdout);
+    Ok((ffmpeg_status.stdout, stderr))
 }
 
 /// Filters the input files based on whether they are a supported file or a directory containing supported files.
