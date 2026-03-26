@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Result};
 use human_sort::compare;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use toniefile::Toniefile;
 
@@ -18,11 +19,12 @@ const SUPPORTED_FILE_EXTENSIONS: [&str; 6] = ["mp3", "aac", "wav", "ogg", "webm"
 /// * `output_file_path` - The path to the output file.
 /// * `ffmpeg` - The path to the ffmpeg executable.
 pub fn convert_to_tonie(
-    input_file_path: &PathBuf,
-    output_file_path: &PathBuf,
-    ffmpeg: String,
+    input_file_path: &Path,
+    output_file_path: &Path,
+    ffmpeg: &str,
 ) -> Result<File> {
     let input_files = filter_input_files(input_file_path)?;
+    println!("Found {} file(s) to process.", input_files.len());
 
     // Use the input file name as a Opus header metadata comment
     // Make it easier to identify already encoded files without listening to them
@@ -41,12 +43,37 @@ pub fn convert_to_tonie(
     let output_file = File::create(output_file_path_validated)?;
     let mut toniefile = Toniefile::new(&output_file, 0x12345678, user_comments).unwrap();
 
+    let pb = ProgressBar::new(input_files.len() as u64);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} {msg} ({eta})",
+        )
+        .unwrap()
+        .progress_chars("#>-"),
+    );
+
     input_files
         .iter()
         .filter_map(|input_file| {
-            audiofile_to_wav(input_file, &ffmpeg)
-                .and_then(vec_u8_to_i16)
-                .ok()
+            let file_name = input_file.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown");
+            pb.set_message(file_name.to_string());
+
+            let res = audiofile_to_wav(input_file, ffmpeg);
+            let opt_wav = match res {
+                Ok((wav, stderr)) => {
+                    let stderr = stderr.trim();
+                    if !stderr.is_empty() {
+                        pb.println(format!("ffmpeg warning for {}:\n{}", file_name, stderr));
+                    }
+                    Some(wav)
+                }
+                Err(e) => {
+                    pb.println(format!("ffmpeg error for {}: {}", file_name, e));
+                    None
+                }
+            };
+
+            opt_wav.and_then(|wav| vec_u8_to_i16(wav).ok())
         })
         .enumerate()
         .for_each(|(index, buffer)| {
@@ -57,7 +84,10 @@ pub fn convert_to_tonie(
                 // Skip this if there is only one file and for the last file in a collection
                 toniefile.new_chapter().ok();
             }
+            pb.inc(1);
         });
+
+    pb.finish_with_message("Conversion complete!");
 
     toniefile.finalize_no_consume()?;
 
@@ -70,7 +100,7 @@ pub fn convert_to_tonie(
 ///
 /// * `file_path` - The path to the input audio file.
 /// * `ffmpeg` - The path to the ffmpeg executable.
-pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
+pub fn audiofile_to_wav(file_path: &Path, ffmpeg: &str) -> Result<(Vec<u8>, String)> {
     let ffmpeg_process = Command::new(ffmpeg)
         .args([
             "-hide_banner",
@@ -89,18 +119,22 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
             "-",
         ])
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()?;
 
     // Await processes to finish
     let ffmpeg_status = ffmpeg_process.wait_with_output()?;
+    let stderr = String::from_utf8_lossy(&ffmpeg_status.stderr).into_owned();
+    
     if !ffmpeg_status.status.success() {
         return Err(anyhow!(
-            "Conversion with ffmpeg failed: {}",
-            ffmpeg_status.status
+            "Conversion with ffmpeg failed: {}\n{}",
+            ffmpeg_status.status,
+            stderr
         ));
     }
 
-    return Ok(ffmpeg_status.stdout);
+    Ok((ffmpeg_status.stdout, stderr))
 }
 
 /// Filters the input files based on whether they are a supported file or a directory containing supported files.
@@ -108,14 +142,14 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
 /// # Arguments
 ///
 /// * `input_file` - The path to the input file or a directory.
-pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
-    if input_file.is_file() && is_file_extension_supported(&input_file) {
+pub fn filter_input_files(input_file: &Path) -> Result<Vec<PathBuf>> {
+    if input_file.is_file() && is_file_extension_supported(input_file) {
         return Ok(vec![input_file.to_path_buf()]);
     } else if input_file.is_dir() {
         let mut paths = std::fs::read_dir(input_file)?
             .filter_map(|res| res.ok())
             .map(|dir_entry| dir_entry.path())
-            .filter(is_file_extension_supported)
+            .filter(|p| is_file_extension_supported(p))
             .collect::<Vec<_>>();
 
         paths.sort_by(|a, b| {
@@ -140,7 +174,7 @@ pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
 /// # Arguments
 ///
 /// * `input_file_path` - The path to the input file.
-fn is_file_extension_supported(input_file_path: &PathBuf) -> bool {
+fn is_file_extension_supported(input_file_path: &Path) -> bool {
     return input_file_path.extension().map_or(false, |ext| {
         SUPPORTED_FILE_EXTENSIONS
             .contains(&ext.to_str().expect("Could not identify file extension."))

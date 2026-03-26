@@ -14,44 +14,27 @@ pub enum CLICommands {
         about = "Extract the audio content from a Tonie file and save it as new Ogg Opus file."
     )]
     Extract {
-        #[arg(required=true, help="The input audio file in Tonie format.", value_parser = validate_file_path)]
+        #[arg(required=true, help="The input audio file in Tonie format.", value_parser = clap::value_parser!(PathBuf), value_hint = clap::ValueHint::FilePath)]
         input: PathBuf,
-        #[arg(help="The output directory for saving the extracted audio content in.", value_parser = validate_directory_path)]
+        #[arg(help="The output directory for saving the extracted audio content in.", value_parser = clap::value_parser!(PathBuf), value_hint = clap::ValueHint::DirPath)]
         output: Option<PathBuf>,
     },
     #[command(
         about = "Convert a single audio file or a directory of audio files into a Toniebox compatible audio file. Input audio files can be in any audio format that can be handled and converted by ffmpeg."
     )]
     Convert {
-        #[arg(required=true, help="The input audio file or a directory of files.", value_parser = validate_directory_path)]
+        #[arg(required=true, help="The input audio file or a directory of files.", value_parser = clap::value_parser!(PathBuf), value_hint = clap::ValueHint::AnyPath)]
         input: PathBuf,
-        #[arg(default_value = "500304E0", help = "The output audio file.")]
+        #[arg(default_value = "500304E0", help = "The output audio file.", value_parser = clap::value_parser!(PathBuf), value_hint = clap::ValueHint::FilePath)]
         output: PathBuf,
         #[arg(
             long,
             default_value = "ffmpeg",
-            help = "Path to ffmpeg executable on your system."
+            help = "Path to ffmpeg executable on your system.",
+            value_hint = clap::ValueHint::ExecutablePath
         )]
         ffmpeg: String,
     },
-}
-
-fn validate_file_path(s: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(s);
-    if path.exists() && path.is_file() {
-        Ok(path)
-    } else {
-        Err(format!("The file '{}' does not exist or is not a file.", s))
-    }
-}
-
-fn validate_directory_path(s: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(s);
-    if path.exists() {
-        Ok(path)
-    } else {
-        Err(format!("The path '{}' does not exist.", s))
-    }
 }
 
 pub fn get_cli() -> Cli {

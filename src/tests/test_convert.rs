@@ -34,11 +34,8 @@ fn test_convert_to_tonie_from_single_file() -> anyhow::Result<()> {
 
     let temp_file = NamedTempFile::new()?;
 
-    let converted_file = convert_to_tonie(
-        &test_mp3_path,
-        &temp_file.path().to_path_buf(),
-        String::from("ffmpeg"),
-    )?;
+    let converted_file =
+        convert_to_tonie(&test_mp3_path, &temp_file.path().to_path_buf(), "ffmpeg")?;
 
     // Check that the converted file exists and has content
     assert!(converted_file.metadata()?.size() > 0);
@@ -66,8 +63,7 @@ fn test_convert_to_tonie_from_directory() -> anyhow::Result<()> {
     let test_input_path = Path::new(TEST_FILES_DIR).join("resources").join("test");
     let temp_output_path = temp_dir.join("test_tonie.taf");
 
-    let converted_file =
-        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
+    let converted_file = convert_to_tonie(&test_input_path, &temp_output_path, "ffmpeg")?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
@@ -84,8 +80,7 @@ fn test_convert_to_tonie_with_default_output() -> anyhow::Result<()> {
     let test_input_path = PathBuf::from(TEST_FILES_DIR);
     let temp_output_path = tempdir()?.into_path();
 
-    let converted_file =
-        convert_to_tonie(&test_input_path, &temp_output_path, String::from("ffmpeg"))?;
+    let converted_file = convert_to_tonie(&test_input_path, &temp_output_path, "ffmpeg")?;
 
     assert!(converted_file.metadata()?.size() > 0);
 
@@ -98,8 +93,7 @@ fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
     let temp_output_path = tempdir()?.into_path();
     let expected_output_path = temp_output_path.join("500304E0");
 
-    let converted_file =
-        convert_to_tonie(&test_mp3_path, &temp_output_path, String::from("ffmpeg"))?;
+    let converted_file = convert_to_tonie(&test_mp3_path, &temp_output_path, "ffmpeg")?;
 
     assert!(converted_file.metadata()?.size() > 0);
     assert!(expected_output_path.exists());
@@ -110,7 +104,7 @@ fn test_convert_to_tonie_with_two_directories() -> anyhow::Result<()> {
 #[test]
 fn test_audiofile_to_wav() -> Result<()> {
     let test_mp3_path = Path::new(TEST_FILES_DIR).join(TEST_MP3_FILE);
-    let temp_wav_buffer = audiofile_to_wav(&test_mp3_path, "ffmpeg")?;
+    let (temp_wav_buffer, _) = audiofile_to_wav(&test_mp3_path, "ffmpeg")?;
 
     assert_eq!(temp_wav_buffer.len() / (2 * 2 * 48000), 208); // Stereo = 2 channel á 48000Hz; 2 bytes per second
 
@@ -125,6 +119,9 @@ fn test_filter_input_files() -> Result<()> {
     let mut temp_input_files = vec![
         temp_path.join("1. MyFile.mp3"),
         temp_path.join("2. MyFile.mp3"),
+        temp_path.join("003. MyFile.mp3"),
+        temp_path.join("03. MyFile.mp3"),
+        temp_path.join("3 MyFile.mp3"),
         temp_path.join("3. MyFile.mp3"),
         temp_path.join("10. MyFile.mp3"),
         temp_path.join("20. MyFile.mp3"),

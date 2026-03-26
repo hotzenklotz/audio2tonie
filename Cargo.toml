@@ -8,6 +8,7 @@ clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
 toniefile = "0.1"
 human-sort="0.2"
+indicatif = "0.18.4"
 
 [dev-dependencies]
 tempfile = "3.17"
