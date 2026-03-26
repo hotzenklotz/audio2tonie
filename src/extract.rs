@@ -1,11 +1,16 @@
 use anyhow::{anyhow, Result};
-use std::{ffi::OsStr, fs::File, io::Write, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 use toniefile::Toniefile;
 
 const TONIEFILE_FRAME_SIZE: usize = 4096;
 
 pub fn extract_tonie_to_opus(
-    input_file_path: &PathBuf,
+    input_file_path: &Path,
     output_file_path: Option<PathBuf>,
 ) -> Result<()> {
     let mut tonie_file = File::open(input_file_path)?;
@@ -51,15 +56,14 @@ pub fn extract_tonie_to_opus(
             // Add final page offset, i.e. end of file
             page_offsets.push((audio_data.len() / TONIEFILE_FRAME_SIZE) as u32);
 
+            let file_name_str = output_file_path
+                .file_name()
+                .and_then(OsStr::to_str)
+                .expect("Expected to have a file name for output path.");
+
             for (i, page_offset) in page_offsets.into_iter().skip(1).enumerate() {
-                let enumerated_output_file_path = output_file_path.with_file_name(format!(
-                    "{}_{}",
-                    i,
-                    output_file_path
-                        .file_name()
-                        .and_then(OsStr::to_str)
-                        .expect("Expected to have a file name for output path."),
-                ));
+                let enumerated_output_file_path =
+                    output_file_path.with_file_name(format!("{}_{}", i, file_name_str,));
 
                 let page_end = page_offset as usize * TONIEFILE_FRAME_SIZE;
 

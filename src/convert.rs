@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use human_sort::compare;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use toniefile::Toniefile;
 
@@ -19,8 +19,8 @@ const SUPPORTED_FILE_EXTENSIONS: [&str; 6] = ["mp3", "aac", "wav", "ogg", "webm"
 /// * `output_file_path` - The path to the output file.
 /// * `ffmpeg` - The path to the ffmpeg executable.
 pub fn convert_to_tonie(
-    input_file_path: &PathBuf,
-    output_file_path: &PathBuf,
+    input_file_path: &Path,
+    output_file_path: &Path,
     ffmpeg: &str,
 ) -> Result<File> {
     let input_files = filter_input_files(input_file_path)?;
@@ -44,9 +44,13 @@ pub fn convert_to_tonie(
     let mut toniefile = Toniefile::new(&output_file, 0x12345678, user_comments).unwrap();
 
     let pb = ProgressBar::new(input_files.len() as u64);
-    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})")
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ({eta})",
+        )
         .unwrap()
-        .progress_chars("#>-"));
+        .progress_chars("#>-"),
+    );
 
     input_files
         .iter()
@@ -80,7 +84,7 @@ pub fn convert_to_tonie(
 ///
 /// * `file_path` - The path to the input audio file.
 /// * `ffmpeg` - The path to the ffmpeg executable.
-pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
+pub fn audiofile_to_wav(file_path: &Path, ffmpeg: &str) -> Result<Vec<u8>> {
     let ffmpeg_process = Command::new(ffmpeg)
         .args([
             "-hide_banner",
@@ -118,14 +122,14 @@ pub fn audiofile_to_wav(file_path: &PathBuf, ffmpeg: &str) -> Result<Vec<u8>> {
 /// # Arguments
 ///
 /// * `input_file` - The path to the input file or a directory.
-pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
+pub fn filter_input_files(input_file: &Path) -> Result<Vec<PathBuf>> {
     if input_file.is_file() && is_file_extension_supported(input_file) {
         return Ok(vec![input_file.to_path_buf()]);
     } else if input_file.is_dir() {
         let mut paths = std::fs::read_dir(input_file)?
             .filter_map(|res| res.ok())
             .map(|dir_entry| dir_entry.path())
-            .filter(is_file_extension_supported)
+            .filter(|p| is_file_extension_supported(p))
             .collect::<Vec<_>>();
 
         paths.sort_by(|a, b| {
@@ -150,7 +154,7 @@ pub fn filter_input_files(input_file: &PathBuf) -> Result<Vec<PathBuf>> {
 /// # Arguments
 ///
 /// * `input_file_path` - The path to the input file.
-fn is_file_extension_supported(input_file_path: &PathBuf) -> bool {
+fn is_file_extension_supported(input_file_path: &Path) -> bool {
     return input_file_path.extension().map_or(false, |ext| {
         SUPPORTED_FILE_EXTENSIONS
             .contains(&ext.to_str().expect("Could not identify file extension."))
